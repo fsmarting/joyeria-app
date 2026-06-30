@@ -3,16 +3,18 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "main": "index.js",
   "scripts": {
-    "dev": "node --watch App.js",
-    "start": "node App.js",
+    "dev": "node --watch index.js",
+    "start": "node index.js",
     "prisma:push": "prisma db push",
     "prisma:generate": "prisma generate",
     "seed": "node seed.js"
   },
   "dependencies": {
-    "@apollo/server": "^5.5.1",
+    "@apollo/server": "^5.0.0",
     "@as-integrations/express4": "^1.1.1",
+    "@graphql-tools/merge": "^9.0.0",
     "@prisma/client": "^6.16.2",
     "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
