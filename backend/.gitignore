@@ -1,0 +1,6 @@
+node_modules
+generated
+.env
+uploads/*
+!uploads/.gitkeep
+*.sql

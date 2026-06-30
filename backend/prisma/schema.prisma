@@ -1,0 +1,456 @@
+
+
+// Modelos de dominio (Producto, OrdenProduccion, Joyero, Cliente, Venta,
+// Conversacion, Socio/RepartoUtilidad, MetaMensual) se agregan en la
+// siguiente fase, una vez validada la estructura del proyecto.
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../generated/client"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ================================================================
+// EMPRESA — ancla multi-tenant (hoy solo Río Rayo, deja puerta
+// abierta a vender el sistema a otras joyerías en el futuro)
+// ================================================================
+model Empresa {
+  id                 Int      @id @default(autoincrement())
+  codigo             String   @unique @db.VarChar(20)
+  nombre             String
+  fec_creacion       DateTime @default(now())
+  usu_creacion       String?
+  fec_actualizacion  DateTime @updatedAt
+  usu_actualizacion  String?
+  version            Int      @default(1)
+  deletedAt          DateTime?
+
+  catalogos          Catalogo[]        @relation("Catalogo_empresa")
+  usuarios           Usuario[]         @relation("Usuario_empresa")
+  joyeros            Joyero[]          @relation("Joyero_empresa")
+  productos          Producto[]        @relation("Producto_empresa")
+  clientes           Cliente[]         @relation("Cliente_empresa")
+  ventas             Venta[]           @relation("Venta_empresa")
+  conversaciones     Conversacion[]    @relation("Conversacion_empresa")
+  socios             Socio[]           @relation("Socio_empresa")
+  metasMensuales     MetaMensual[]     @relation("MetaMensual_empresa")
+  ordenesProduccion  OrdenProduccion[] @relation("OrdenProduccion_empresa")
+}
+
+// ================================================================
+// USUARIO — login del sistema (mismo patrón de auth de FinanzasApp:
+// password, resetPasswordToken con expiración, etc.)
+// ================================================================
+model Usuario {
+  id                   Int       @id @default(autoincrement())
+  empresaId            Int
+  codigo               String    @db.VarChar(30)
+  nombre               String
+  password             String
+  correo               String?   @unique @db.VarChar(150)
+  resetPasswordToken   String?   @unique
+  resetPasswordExpires DateTime?
+  rolId                Int?
+  estadoId             Int?
+  ultimo_login         DateTime?
+
+  fec_creacion         DateTime  @default(now())
+  usu_creacion         String?
+  fec_actualizacion    DateTime  @updatedAt
+  usu_actualizacion    String?
+  version              Int       @default(1)
+  deletedAt            DateTime?
+
+  empresa              Empresa        @relation("Usuario_empresa", fields: [empresaId], references: [id])
+  rol                  Grupo?         @relation("Usuario_rol", fields: [rolId], references: [id])
+  estado               Grupo?         @relation("Usuario_estado", fields: [estadoId], references: [id])
+  ventasComoVendedora  Venta[]        @relation("Venta_Vendedora")
+  conversaciones       Conversacion[] @relation("Conversacion_Usuario")
+
+  @@unique([empresaId, codigo])
+}
+
+// ================================================================
+// CATÁLOGO / SUBCATÁLOGO / GRUPO — mismo patrón genérico de
+// FinanzasApp para estados y clasificaciones configurables, en vez
+// de enums fijos en el schema.
+// ================================================================
+model Catalogo {
+  id                Int           @id @default(autoincrement())
+  empresaId         Int
+  codigo            String        @db.VarChar(20)
+  nombre            String        @db.VarChar(100)
+  fec_creacion      DateTime      @default(now())
+  version           Int           @default(1)
+  deletedAt         DateTime?
+
+  empresa           Empresa       @relation("Catalogo_empresa", fields: [empresaId], references: [id])
+  subcatalogos      SubCatalogo[] @relation("SubCatalogo_catalogo")
+
+  @@unique([empresaId, codigo])
+}
+
+model SubCatalogo {
+  id                Int       @id @default(autoincrement())
+  catalogoId        Int
+  codigo            String    @db.VarChar(20)
+  nombre            String    @db.VarChar(100)
+  fec_creacion      DateTime  @default(now())
+  version           Int       @default(1)
+  deletedAt         DateTime?
+
+  catalogo          Catalogo  @relation("SubCatalogo_catalogo", fields: [catalogoId], references: [id])
+  grupos            Grupo[]   @relation("Grupo_subcatalogo")
+
+  @@unique([catalogoId, codigo])
+}
+
+// Grupo cubre: estados de Venta, estados de OrdenProduccion/Etapa,
+// tipo de piedra, medio de pago, tier de cliente, canal de llegada,
+// motivo de pérdida de conversación, rol de usuario, etc.
+model Grupo {
+  id                Int       @id @default(autoincrement())
+  subcatalogoId     Int
+  padreId           Int?
+  codigo            String    @db.VarChar(20)
+  nombre            String    @db.VarChar(100)
+  fec_creacion      DateTime  @default(now())
+  version           Int       @default(1)
+  deletedAt         DateTime?
+
+  subcatalogo       SubCatalogo @relation("Grupo_subcatalogo", fields: [subcatalogoId], references: [id])
+  padre             Grupo?      @relation("GrupoPadre", fields: [padreId], references: [id])
+  hijos             Grupo[]     @relation("GrupoPadre")
+
+  // Relaciones inversas con nombre — una por cada uso de Grupo como FK
+  usuariosRol             Usuario[]         @relation("Usuario_rol")
+  usuariosEstado           Usuario[]         @relation("Usuario_estado")
+  productosCategoria       Producto[]        @relation("Producto_Categoria")
+  piedrasTipo              Piedra[]          @relation("Piedra_Tipo")
+  ordenesEstado             OrdenProduccion[] @relation("OrdenProduccion_Estado")
+  etapasEstado              EtapaProduccion[] @relation("EtapaProduccion_Estado")
+  etapasNombre               EtapaProduccion[] @relation("EtapaProduccion_Nombre")
+  clientesTier               Cliente[]         @relation("Cliente_Tier")
+  clientesCanal               Cliente[]         @relation("Cliente_Canal")
+  ventasMedioPago             Venta[]           @relation("Venta_MedioPago")
+  ventasEstado                 Venta[]           @relation("Venta_Estado")
+  conversacionesCanal           Conversacion[]    @relation("Conversacion_Canal")
+  conversacionesMotivoPerdida   Conversacion[]    @relation("Conversacion_MotivoPerdida")
+
+  @@unique([subcatalogoId, codigo])
+}
+
+// ================================================================
+// JOYERO — maquilador externo que elabora las piezas
+// ================================================================
+model Joyero {
+  id                Int       @id @default(autoincrement())
+  empresaId         Int
+  nombre            String    @db.VarChar(150)
+  especialidad      String?   @db.VarChar(150)
+  telefono          String?   @db.VarChar(30)
+  activo            Boolean   @default(true)
+
+  fec_creacion      DateTime  @default(now())
+  fec_actualizacion DateTime  @updatedAt
+  version           Int       @default(1)
+  deletedAt         DateTime?
+
+  empresa           Empresa           @relation("Joyero_empresa", fields: [empresaId], references: [id])
+  ordenesProduccion OrdenProduccion[] @relation("OrdenProduccion_Joyero")
+}
+
+// ================================================================
+// PIEDRA — catálogo de insumos (oro se maneja en Producto como
+// gramaje, piedras se catalogan aparte por tipo/forma/costo)
+// ================================================================
+model Piedra {
+  id                Int      @id @default(autoincrement())
+  empresaId         Int
+  nombre            String   @db.VarChar(100)   // "Zafiro azul", "Circón blanco"
+  tipoId            Int?                          // referencia a Grupo (color/forma)
+  costoPorQuilate   Decimal  @db.Decimal(12, 2)
+  activo            Boolean  @default(true)
+
+  fec_creacion      DateTime @default(now())
+  fec_actualizacion DateTime @updatedAt
+  version           Int      @default(1)
+  deletedAt         DateTime?
+
+  tipo              Grupo?           @relation("Piedra_Tipo", fields: [tipoId], references: [id])
+  itemsEnProducto   ProductoPiedra[] @relation("ProductoPiedra_Piedra")
+
+  @@index([empresaId])
+}
+
+// ================================================================
+// PRODUCTO — el BOM de la pieza (oro + piedras + mano de obra)
+// ================================================================
+model Producto {
+  id                 Int      @id @default(autoincrement())
+  empresaId          Int
+  referencia         String   @db.VarChar(50)     // ref interna de catálogo
+  nombre             String   @db.VarChar(150)
+  categoriaId        Int?                            // anillo/cadena/aretes (Grupo)
+  descripcion        String?  @db.VarChar(500)
+
+  // Material principal (oro u otro metal precioso)
+  gramosOro          Decimal  @default(0) @db.Decimal(10, 3)
+  costoGramoOroUsado Decimal  @default(0) @db.Decimal(12, 2) // snapshot del precio del oro al costear
+  // (igual al patrón costoHoraSnapshot de RegistroTiempo en FinanzasApp:
+  //  el precio del oro varía a diario, se congela el valor usado al costear)
+
+  costoManoObra      Decimal  @default(0) @db.Decimal(12, 2) // lo que cobra el joyero por la pieza
+  costoOtros         Decimal  @default(0) @db.Decimal(12, 2) // empaque, baño, certificado, etc.
+
+  // Calculados en negocio (resolver), no como campo generado de BD:
+  // costoTotal = (gramosOro * costoGramoOroUsado) + sum(piedras) + costoManoObra + costoOtros
+  precioVenta        Decimal  @default(0) @db.Decimal(12, 2)
+
+  activo             Boolean  @default(true)
+  fec_creacion       DateTime @default(now())
+  usu_creacion       String?
+  fec_actualizacion  DateTime @updatedAt
+  usu_actualizacion  String?
+  version            Int      @default(1)
+  deletedAt          DateTime?
+
+  empresa            Empresa           @relation("Producto_empresa", fields: [empresaId], references: [id])
+  categoria          Grupo?            @relation("Producto_Categoria", fields: [categoriaId], references: [id])
+  piedras            ProductoPiedra[]  @relation("ProductoPiedra_Producto")
+  ordenesProduccion  OrdenProduccion[] @relation("OrdenProduccion_Producto")
+  ventas             Venta[]           @relation("Venta_Producto")
+
+  @@unique([empresaId, referencia])
+  @@index([empresaId, categoriaId])
+}
+
+// Tabla puente: una pieza puede llevar varias piedras distintas
+// (ej. 1 diamante principal + 6 circones secundarios)
+model ProductoPiedra {
+  id          Int      @id @default(autoincrement())
+  productoId  Int
+  piedraId    Int
+  quilates    Decimal  @db.Decimal(8, 3)
+  cantidad    Int      @default(1)
+  costoTotal  Decimal  @db.Decimal(12, 2) // snapshot: quilates * cantidad * costoPorQuilate al momento de armar el BOM
+  version     Int      @default(1)
+  deletedAt   DateTime?
+
+  producto    Producto @relation("ProductoPiedra_Producto", fields: [productoId], references: [id], onDelete: Cascade)
+  piedra      Piedra   @relation("ProductoPiedra_Piedra", fields: [piedraId], references: [id])
+
+  @@index([productoId])
+  @@index([piedraId])
+}
+
+// ================================================================
+// ORDEN DE PRODUCCIÓN — seguimiento de una pieza con el joyero,
+// con etapas secuenciales (mismo patrón Material→Etapa de Eventos)
+// ================================================================
+model OrdenProduccion {
+  id                Int       @id @default(autoincrement())
+  empresaId         Int
+  productoId        Int
+  joyeroId          Int
+  cantidad          Int       @default(1)
+  fechaEnvio        DateTime  @default(now())
+  fechaEstimada     DateTime?
+  fechaEntrega      DateTime?
+  estadoId          Int                          // referencia a Grupo: PURIFICAR/VACIADO/ENGASTE/PULIDO/ENTREGADO
+  gramosEnviados    Decimal?  @db.Decimal(10, 3)  // material entregado al joyero
+  gramosDevueltos   Decimal?  @db.Decimal(10, 3)  // material que regresó en la pieza (control de merma)
+  nota              String?   @db.VarChar(500)
+
+  fec_creacion      DateTime  @default(now())
+  usu_creacion      String?
+  fec_actualizacion DateTime  @updatedAt
+  usu_actualizacion String?
+  version           Int       @default(1)
+  deletedAt         DateTime?
+
+  empresa           Empresa           @relation("OrdenProduccion_empresa", fields: [empresaId], references: [id])
+  producto          Producto          @relation("OrdenProduccion_Producto", fields: [productoId], references: [id])
+  joyero            Joyero            @relation("OrdenProduccion_Joyero", fields: [joyeroId], references: [id])
+  estado            Grupo             @relation("OrdenProduccion_Estado", fields: [estadoId], references: [id])
+  etapas            EtapaProduccion[] @relation("OrdenProduccion_Etapas")
+
+  @@index([empresaId, estadoId])
+  @@index([joyeroId])
+}
+
+// Etapas secuenciales del proceso con el joyero (purificar, vaciado,
+// engaste, pulido...) — mismo patrón de EtapaProduccion de Eventos.
+model EtapaProduccion {
+  id                Int       @id @default(autoincrement())
+  ordenId           Int
+  orden             Int                          // 1, 2, 3... define la secuencia
+  nombreId          Int                          // referencia a Grupo (catálogo de nombres de etapa)
+  fechaInicio       DateTime?
+  fechaCompletada   DateTime?
+  estadoId          Int                          // referencia a Grupo: PENDIENTE/EN_PROCESO/COMPLETADA
+  nota              String?   @db.VarChar(255)
+
+  fec_creacion      DateTime  @default(now())
+  fec_actualizacion DateTime  @updatedAt
+  version           Int       @default(1)
+  deletedAt         DateTime?
+
+  ordenProduccion   OrdenProduccion @relation("OrdenProduccion_Etapas", fields: [ordenId], references: [id], onDelete: Cascade)
+  nombre            Grupo           @relation("EtapaProduccion_Nombre", fields: [nombreId], references: [id])
+  estado            Grupo           @relation("EtapaProduccion_Estado", fields: [estadoId], references: [id])
+
+  @@unique([ordenId, orden])
+  @@index([ordenId, estadoId])
+}
+
+// ================================================================
+// CLIENTE — base de clientas (CRM)
+// ================================================================
+model Cliente {
+  id                Int       @id @default(autoincrement())
+  empresaId         Int
+  nombre            String    @db.VarChar(150)
+  telefono          String?   @db.VarChar(30)
+  tierId            Int?                          // referencia a Grupo
+  canalId           Int?                          // referencia a Grupo (Instagram, WhatsApp, referido...)
+  nota              String?   @db.VarChar(500)
+
+  fec_creacion      DateTime  @default(now())
+  fec_actualizacion DateTime  @updatedAt
+  version           Int       @default(1)
+  deletedAt         DateTime?
+
+  empresa           Empresa        @relation("Cliente_empresa", fields: [empresaId], references: [id])
+  tier              Grupo?         @relation("Cliente_Tier", fields: [tierId], references: [id])
+  canal             Grupo?         @relation("Cliente_Canal", fields: [canalId], references: [id])
+  ventas            Venta[]        @relation("Venta_Cliente")
+  conversaciones    Conversacion[] @relation("Conversacion_Cliente")
+
+  // LTV y recurrencia se calculan en resolver a partir de `ventas`,
+  // no se guardan como campo (evita que queden desactualizados).
+
+  @@index([empresaId])
+}
+
+// ================================================================
+// CONVERSACIÓN — registro de chats (igual a la hoja "Registro de
+// Chats" del Excel de la hija: cotizó o no, cerró o no, motivo)
+// ================================================================
+model Conversacion {
+  id              Int       @id @default(autoincrement())
+  empresaId       Int
+  clienteId       Int?
+  usuarioId       Int?                            // vendedora que atendió
+  canalId         Int?                            // referencia a Grupo
+  fecha           DateTime  @default(now())
+  cotizo          Boolean   @default(false)
+  cerro           Boolean   @default(false)
+  motivoPerdidaId Int?                            // referencia a Grupo: Silencio/Precio/etc.
+  usoProtocolo    Boolean   @default(false)
+  nota            String?   @db.VarChar(500)
+
+  fec_creacion    DateTime  @default(now())
+  version         Int       @default(1)
+  deletedAt       DateTime?
+
+  empresa         Empresa  @relation("Conversacion_empresa", fields: [empresaId], references: [id])
+  cliente         Cliente? @relation("Conversacion_Cliente", fields: [clienteId], references: [id])
+  usuario         Usuario? @relation("Conversacion_Usuario", fields: [usuarioId], references: [id])
+  canal           Grupo?   @relation("Conversacion_Canal", fields: [canalId], references: [id])
+  motivoPerdida   Grupo?   @relation("Conversacion_MotivoPerdida", fields: [motivoPerdidaId], references: [id])
+
+  @@index([empresaId, fecha])
+}
+
+// ================================================================
+// VENTA — con medio de pago y comisión, tal como opera Río Rayo
+// ================================================================
+model Venta {
+  id                  Int       @id @default(autoincrement())
+  empresaId           Int
+  clienteId           Int
+  productoId          Int
+  vendedoraId         Int?                          // Usuario que vendió
+  fecha               DateTime  @default(now())
+  precioVenta         Decimal   @db.Decimal(12, 2)   // PVP real cobrado (puede llevar descuento)
+  medioPagoId         Int                            // referencia a Grupo: EFECTIVO/TARJETA
+  porcentajeComision  Decimal   @db.Decimal(5, 2)     // 20.00 o 13.00 segun medio de pago, snapshot
+  valorComision       Decimal   @db.Decimal(12, 2)    // precioVenta * porcentajeComision, calculado al guardar
+  estadoId            Int                             // referencia a Grupo: CONFIRMADA/ANULADA
+
+  fec_creacion        DateTime  @default(now())
+  usu_creacion        String?
+  fec_actualizacion   DateTime  @updatedAt
+  usu_actualizacion   String?
+  version             Int       @default(1)
+  deletedAt           DateTime?
+
+  empresa             Empresa         @relation("Venta_empresa", fields: [empresaId], references: [id])
+  cliente             Cliente         @relation("Venta_Cliente", fields: [clienteId], references: [id])
+  producto             Producto        @relation("Venta_Producto", fields: [productoId], references: [id])
+  vendedora            Usuario?        @relation("Venta_Vendedora", fields: [vendedoraId], references: [id])
+  medioPago             Grupo           @relation("Venta_MedioPago", fields: [medioPagoId], references: [id])
+  estado                Grupo           @relation("Venta_Estado", fields: [estadoId], references: [id])
+  repartos              RepartoUtilidad[] @relation("RepartoUtilidad_Venta")
+
+  @@index([empresaId, fecha])
+  @@index([clienteId])
+  @@index([vendedoraId])
+}
+
+// ================================================================
+// SOCIO — reparto de utilidad entre socias (JUNTAS/LAURA/NATY que
+// vimos en la hoja VENTAS de ORGANIZADO)
+// ================================================================
+model Socio {
+  id                Int       @id @default(autoincrement())
+  empresaId         Int
+  nombre            String    @db.VarChar(100)
+  porcentajeDefecto Decimal?  @db.Decimal(5, 2)   // % de reparto habitual, editable por venta
+  activo            Boolean   @default(true)
+  version           Int       @default(1)
+  deletedAt         DateTime?
+
+  empresa           Empresa           @relation("Socio_empresa", fields: [empresaId], references: [id])
+  repartos          RepartoUtilidad[] @relation("RepartoUtilidad_Socio")
+}
+
+model RepartoUtilidad {
+  id           Int      @id @default(autoincrement())
+  ventaId      Int
+  socioId      Int
+  porcentaje   Decimal  @db.Decimal(5, 2)
+  valor        Decimal  @db.Decimal(12, 2)
+  version      Int      @default(1)
+  deletedAt    DateTime?
+
+  venta        Venta @relation("RepartoUtilidad_Venta", fields: [ventaId], references: [id], onDelete: Cascade)
+  socio        Socio @relation("RepartoUtilidad_Socio", fields: [socioId], references: [id])
+
+  @@unique([ventaId, socioId])
+}
+
+// ================================================================
+// META MENSUAL — metas 30-60-90 / presupuesto mensual de ventas
+// ================================================================
+model MetaMensual {
+  id              Int      @id @default(autoincrement())
+  empresaId       Int
+  anio            Int
+  mes             Int
+  metaIngresos    Decimal  @db.Decimal(14, 2)
+  metaVentas      Int?                              // numero de piezas/ventas meta
+  observaciones   String?  @db.VarChar(500)
+  version         Int      @default(1)
+  deletedAt       DateTime?
+
+  empresa         Empresa @relation("MetaMensual_empresa", fields: [empresaId], references: [id])
+
+  @@unique([empresaId, anio, mes])
+}
+
