@@ -1,9 +1,3 @@
-
-
-// Modelos de dominio (Producto, OrdenProduccion, Joyero, Cliente, Venta,
-// Conversacion, Socio/RepartoUtilidad, MetaMensual) se agregan en la
-// siguiente fase, una vez validada la estructura del proyecto.
-
 generator client {
   provider = "prisma-client-js"
   output   = "../generated/client"
@@ -15,48 +9,49 @@ datasource db {
 }
 
 // ================================================================
-// EMPRESA — ancla multi-tenant (hoy solo Río Rayo, deja puerta
-// abierta a vender el sistema a otras joyerías en el futuro)
+// EMPRESA — ancla multi-tenant
 // ================================================================
 model Empresa {
-  id                 Int      @id @default(autoincrement())
-  codigo             String   @unique @db.VarChar(20)
-  nombre             String
-  fec_creacion       DateTime @default(now())
-  usu_creacion       String?
-  fec_actualizacion  DateTime @updatedAt
-  usu_actualizacion  String?
-  version            Int      @default(1)
-  deletedAt          DateTime?
+  id                Int      @id @default(autoincrement())
+  codigo            String   @unique @db.VarChar(20)
+  nombre            String
+  fec_creacion      DateTime @default(now())
+  usu_creacion      String?
+  fec_actualizacion DateTime @updatedAt
+  usu_actualizacion String?
+  version           Int      @default(1)
+  deletedAt         DateTime?
 
-  catalogos          Catalogo[]        @relation("Catalogo_empresa")
-  usuarios           Usuario[]         @relation("Usuario_empresa")
-  joyeros            Joyero[]          @relation("Joyero_empresa")
-  productos          Producto[]        @relation("Producto_empresa")
-  clientes           Cliente[]         @relation("Cliente_empresa")
-  ventas             Venta[]           @relation("Venta_empresa")
-  conversaciones     Conversacion[]    @relation("Conversacion_empresa")
-  socios             Socio[]           @relation("Socio_empresa")
-  metasMensuales     MetaMensual[]     @relation("MetaMensual_empresa")
-  ordenesProduccion  OrdenProduccion[] @relation("OrdenProduccion_empresa")
+  catalogos         Catalogo[]        @relation("Catalogo_empresa")
+  usuarioEmpresas   UsuarioEmpresa[]  @relation("UsuarioEmpresa_empresa")
+  joyeros           Joyero[]          @relation("Joyero_empresa")
+  productos         Producto[]        @relation("Producto_empresa")
+  clientes          Cliente[]         @relation("Cliente_empresa")
+  ventas            Venta[]           @relation("Venta_empresa")
+  conversaciones    Conversacion[]    @relation("Conversacion_empresa")
+  socios            Socio[]           @relation("Socio_empresa")
+  metasMensuales    MetaMensual[]     @relation("MetaMensual_empresa")
+  ordenesProduccion OrdenProduccion[] @relation("OrdenProduccion_empresa")
 }
 
 // ================================================================
-// USUARIO — login del sistema (mismo patrón de auth de FinanzasApp:
-// password, resetPasswordToken con expiración, etc.)
+// USUARIO — mismo patrón exacto que FinanzasApp:
+// código único global, empresa y rol viajan en UsuarioEmpresa.
+// Las relaciones de Venta y Conversacion apuntan aquí porque
+// esas tablas ya tienen su propio empresaId — no es redundante.
 // ================================================================
 model Usuario {
   id                   Int       @id @default(autoincrement())
-  empresaId            Int
-  codigo               String    @db.VarChar(30)
+  codigo               String    @unique @db.VarChar(30)
   nombre               String
   password             String
+  foto                 String    @default("")
   correo               String?   @unique @db.VarChar(150)
   resetPasswordToken   String?   @unique
   resetPasswordExpires DateTime?
-  rolId                Int?
   estadoId             Int?
   ultimo_login         DateTime?
+  fecha                DateTime  @default(now())
 
   fec_creacion         DateTime  @default(now())
   usu_creacion         String?
@@ -65,19 +60,49 @@ model Usuario {
   version              Int       @default(1)
   deletedAt            DateTime?
 
-  empresa              Empresa        @relation("Usuario_empresa", fields: [empresaId], references: [id])
-  rol                  Grupo?         @relation("Usuario_rol", fields: [rolId], references: [id])
-  estado               Grupo?         @relation("Usuario_estado", fields: [estadoId], references: [id])
-  ventasComoVendedora  Venta[]        @relation("Venta_Vendedora")
-  conversaciones       Conversacion[] @relation("Conversacion_Usuario")
-
-  @@unique([empresaId, codigo])
+  estado               Grupo?           @relation("Usuario_estado", fields: [estadoId], references: [id])
+  empresasAsignadas    UsuarioEmpresa[] @relation("UsuarioEmpresa_usuario")
+  ventasComoVendedora  Venta[]          @relation("Venta_Vendedora")
+  conversaciones       Conversacion[]   @relation("Conversacion_Usuario")
 }
 
 // ================================================================
-// CATÁLOGO / SUBCATÁLOGO / GRUPO — mismo patrón genérico de
-// FinanzasApp para estados y clasificaciones configurables, en vez
-// de enums fijos en el schema.
+// USUARIO_EMPRESA — mismo patrón exacto que FinanzasApp.
+// Un usuario puede pertenecer a varias empresas con rol propio.
+// Aquí viven los datos que DEPENDEN de la combinación usuario+empresa:
+// - rol (puede ser admin en una empresa y solo lectura en otra)
+// - comisiones (pueden variar por empresa)
+// - meta mensual (cada empresa tiene sus propias metas)
+// ================================================================
+model UsuarioEmpresa {
+  id                Int      @id @default(autoincrement())
+  empresaId         Int
+  usuarioId         Int
+  rolId             Int
+  costoHora         Float    @default(0)
+
+  // Comisiones por medio de pago — viven aquí porque dependen
+  // de la empresa (cada joyería puede tener sus propias reglas)
+  comisionEfectivo  Decimal  @default(20) @db.Decimal(5, 2)
+  comisionTarjeta   Decimal  @default(13) @db.Decimal(5, 2)
+  metaMensual       Decimal  @default(0)  @db.Decimal(14, 2)
+
+  fec_creacion      DateTime @default(now())
+  usu_creacion      String?
+  fec_actualizacion DateTime @updatedAt
+  usu_actualizacion String?
+  version           Int      @default(1)
+  deletedAt         DateTime?
+
+  empresa           Empresa @relation("UsuarioEmpresa_empresa", fields: [empresaId], references: [id])
+  rol               Grupo   @relation("UsuarioEmpresa_rol", fields: [rolId], references: [id])
+  usuario           Usuario @relation("UsuarioEmpresa_usuario", fields: [usuarioId], references: [id])
+
+  @@unique([empresaId, usuarioId])
+}
+
+// ================================================================
+// CATÁLOGO / SUBCATÁLOGO / GRUPO
 // ================================================================
 model Catalogo {
   id                Int           @id @default(autoincrement())
@@ -109,9 +134,6 @@ model SubCatalogo {
   @@unique([catalogoId, codigo])
 }
 
-// Grupo cubre: estados de Venta, estados de OrdenProduccion/Etapa,
-// tipo de piedra, medio de pago, tier de cliente, canal de llegada,
-// motivo de pérdida de conversación, rol de usuario, etc.
 model Grupo {
   id                Int       @id @default(autoincrement())
   subcatalogoId     Int
@@ -126,26 +148,26 @@ model Grupo {
   padre             Grupo?      @relation("GrupoPadre", fields: [padreId], references: [id])
   hijos             Grupo[]     @relation("GrupoPadre")
 
-  // Relaciones inversas con nombre — una por cada uso de Grupo como FK
-  usuariosRol             Usuario[]         @relation("Usuario_rol")
-  usuariosEstado           Usuario[]         @relation("Usuario_estado")
-  productosCategoria       Producto[]        @relation("Producto_Categoria")
-  piedrasTipo              Piedra[]          @relation("Piedra_Tipo")
+  // Relaciones inversas
+  usuariosEstado            Usuario[]        @relation("Usuario_estado")
+  usuarioEmpresaRoles       UsuarioEmpresa[] @relation("UsuarioEmpresa_rol")
+  productosCategoria        Producto[]       @relation("Producto_Categoria")
+  piedrasTipo               Piedra[]         @relation("Piedra_Tipo")
   ordenesEstado             OrdenProduccion[] @relation("OrdenProduccion_Estado")
   etapasEstado              EtapaProduccion[] @relation("EtapaProduccion_Estado")
-  etapasNombre               EtapaProduccion[] @relation("EtapaProduccion_Nombre")
-  clientesTier               Cliente[]         @relation("Cliente_Tier")
-  clientesCanal               Cliente[]         @relation("Cliente_Canal")
-  ventasMedioPago             Venta[]           @relation("Venta_MedioPago")
-  ventasEstado                 Venta[]           @relation("Venta_Estado")
-  conversacionesCanal           Conversacion[]    @relation("Conversacion_Canal")
-  conversacionesMotivoPerdida   Conversacion[]    @relation("Conversacion_MotivoPerdida")
+  etapasNombre              EtapaProduccion[] @relation("EtapaProduccion_Nombre")
+  clientesTier              Cliente[]         @relation("Cliente_Tier")
+  clientesCanal             Cliente[]         @relation("Cliente_Canal")
+  ventasMedioPago           Venta[]           @relation("Venta_MedioPago")
+  ventasEstado              Venta[]           @relation("Venta_Estado")
+  conversacionesCanal       Conversacion[]    @relation("Conversacion_Canal")
+  conversacionesMotivoPerdida Conversacion[]  @relation("Conversacion_MotivoPerdida")
 
   @@unique([subcatalogoId, codigo])
 }
 
 // ================================================================
-// JOYERO — maquilador externo que elabora las piezas
+// JOYERO — maquilador externo
 // ================================================================
 model Joyero {
   id                Int       @id @default(autoincrement())
@@ -156,7 +178,9 @@ model Joyero {
   activo            Boolean   @default(true)
 
   fec_creacion      DateTime  @default(now())
+  usu_creacion      String?
   fec_actualizacion DateTime  @updatedAt
+  usu_actualizacion String?
   version           Int       @default(1)
   deletedAt         DateTime?
 
@@ -165,19 +189,20 @@ model Joyero {
 }
 
 // ================================================================
-// PIEDRA — catálogo de insumos (oro se maneja en Producto como
-// gramaje, piedras se catalogan aparte por tipo/forma/costo)
+// PIEDRA — catálogo de insumos secundarios
 // ================================================================
 model Piedra {
   id                Int      @id @default(autoincrement())
   empresaId         Int
-  nombre            String   @db.VarChar(100)   // "Zafiro azul", "Circón blanco"
-  tipoId            Int?                          // referencia a Grupo (color/forma)
+  nombre            String   @db.VarChar(100)
+  tipoId            Int?
   costoPorQuilate   Decimal  @db.Decimal(12, 2)
   activo            Boolean  @default(true)
 
   fec_creacion      DateTime @default(now())
+  usu_creacion      String?
   fec_actualizacion DateTime @updatedAt
+  usu_actualizacion String?
   version           Int      @default(1)
   deletedAt         DateTime?
 
@@ -188,27 +213,22 @@ model Piedra {
 }
 
 // ================================================================
-// PRODUCTO — el BOM de la pieza (oro + piedras + mano de obra)
+// PRODUCTO — BOM de la pieza (oro + piedras + mano de obra)
 // ================================================================
 model Producto {
   id                 Int      @id @default(autoincrement())
   empresaId          Int
-  referencia         String   @db.VarChar(50)     // ref interna de catálogo
+  referencia         String   @db.VarChar(50)
   nombre             String   @db.VarChar(150)
-  categoriaId        Int?                            // anillo/cadena/aretes (Grupo)
+  categoriaId        Int?
   descripcion        String?  @db.VarChar(500)
 
-  // Material principal (oro u otro metal precioso)
+  // Material principal
   gramosOro          Decimal  @default(0) @db.Decimal(10, 3)
-  costoGramoOroUsado Decimal  @default(0) @db.Decimal(12, 2) // snapshot del precio del oro al costear
-  // (igual al patrón costoHoraSnapshot de RegistroTiempo en FinanzasApp:
-  //  el precio del oro varía a diario, se congela el valor usado al costear)
+  costoGramoOroUsado Decimal  @default(0) @db.Decimal(12, 2) // snapshot al momento de costear
 
-  costoManoObra      Decimal  @default(0) @db.Decimal(12, 2) // lo que cobra el joyero por la pieza
-  costoOtros         Decimal  @default(0) @db.Decimal(12, 2) // empaque, baño, certificado, etc.
-
-  // Calculados en negocio (resolver), no como campo generado de BD:
-  // costoTotal = (gramosOro * costoGramoOroUsado) + sum(piedras) + costoManoObra + costoOtros
+  costoManoObra      Decimal  @default(0) @db.Decimal(12, 2)
+  costoOtros         Decimal  @default(0) @db.Decimal(12, 2)
   precioVenta        Decimal  @default(0) @db.Decimal(12, 2)
 
   activo             Boolean  @default(true)
@@ -229,15 +249,13 @@ model Producto {
   @@index([empresaId, categoriaId])
 }
 
-// Tabla puente: una pieza puede llevar varias piedras distintas
-// (ej. 1 diamante principal + 6 circones secundarios)
 model ProductoPiedra {
   id          Int      @id @default(autoincrement())
   productoId  Int
   piedraId    Int
   quilates    Decimal  @db.Decimal(8, 3)
   cantidad    Int      @default(1)
-  costoTotal  Decimal  @db.Decimal(12, 2) // snapshot: quilates * cantidad * costoPorQuilate al momento de armar el BOM
+  costoTotal  Decimal  @db.Decimal(12, 2) // snapshot al armar el BOM
   version     Int      @default(1)
   deletedAt   DateTime?
 
@@ -245,12 +263,10 @@ model ProductoPiedra {
   piedra      Piedra   @relation("ProductoPiedra_Piedra", fields: [piedraId], references: [id])
 
   @@index([productoId])
-  @@index([piedraId])
 }
 
 // ================================================================
-// ORDEN DE PRODUCCIÓN — seguimiento de una pieza con el joyero,
-// con etapas secuenciales (mismo patrón Material→Etapa de Eventos)
+// ORDEN DE PRODUCCIÓN + ETAPAS
 // ================================================================
 model OrdenProduccion {
   id                Int       @id @default(autoincrement())
@@ -261,9 +277,9 @@ model OrdenProduccion {
   fechaEnvio        DateTime  @default(now())
   fechaEstimada     DateTime?
   fechaEntrega      DateTime?
-  estadoId          Int                          // referencia a Grupo: PURIFICAR/VACIADO/ENGASTE/PULIDO/ENTREGADO
-  gramosEnviados    Decimal?  @db.Decimal(10, 3)  // material entregado al joyero
-  gramosDevueltos   Decimal?  @db.Decimal(10, 3)  // material que regresó en la pieza (control de merma)
+  estadoId          Int
+  gramosEnviados    Decimal?  @db.Decimal(10, 3)
+  gramosDevueltos   Decimal?  @db.Decimal(10, 3)
   nota              String?   @db.VarChar(500)
 
   fec_creacion      DateTime  @default(now())
@@ -283,20 +299,20 @@ model OrdenProduccion {
   @@index([joyeroId])
 }
 
-// Etapas secuenciales del proceso con el joyero (purificar, vaciado,
-// engaste, pulido...) — mismo patrón de EtapaProduccion de Eventos.
 model EtapaProduccion {
   id                Int       @id @default(autoincrement())
   ordenId           Int
-  orden             Int                          // 1, 2, 3... define la secuencia
-  nombreId          Int                          // referencia a Grupo (catálogo de nombres de etapa)
+  orden             Int
+  nombreId          Int
   fechaInicio       DateTime?
   fechaCompletada   DateTime?
-  estadoId          Int                          // referencia a Grupo: PENDIENTE/EN_PROCESO/COMPLETADA
+  estadoId          Int
   nota              String?   @db.VarChar(255)
 
   fec_creacion      DateTime  @default(now())
+  usu_creacion      String?
   fec_actualizacion DateTime  @updatedAt
+  usu_actualizacion String?
   version           Int       @default(1)
   deletedAt         DateTime?
 
@@ -316,12 +332,14 @@ model Cliente {
   empresaId         Int
   nombre            String    @db.VarChar(150)
   telefono          String?   @db.VarChar(30)
-  tierId            Int?                          // referencia a Grupo
-  canalId           Int?                          // referencia a Grupo (Instagram, WhatsApp, referido...)
+  tierId            Int?
+  canalId           Int?
   nota              String?   @db.VarChar(500)
 
   fec_creacion      DateTime  @default(now())
+  usu_creacion      String?
   fec_actualizacion DateTime  @updatedAt
+  usu_actualizacion String?
   version           Int       @default(1)
   deletedAt         DateTime?
 
@@ -331,30 +349,27 @@ model Cliente {
   ventas            Venta[]        @relation("Venta_Cliente")
   conversaciones    Conversacion[] @relation("Conversacion_Cliente")
 
-  // LTV y recurrencia se calculan en resolver a partir de `ventas`,
-  // no se guardan como campo (evita que queden desactualizados).
-
   @@index([empresaId])
 }
 
 // ================================================================
-// CONVERSACIÓN — registro de chats (igual a la hoja "Registro de
-// Chats" del Excel de la hija: cotizó o no, cerró o no, motivo)
+// CONVERSACIÓN — registro de chats WhatsApp/Instagram
 // ================================================================
 model Conversacion {
   id              Int       @id @default(autoincrement())
   empresaId       Int
   clienteId       Int?
-  usuarioId       Int?                            // vendedora que atendió
-  canalId         Int?                            // referencia a Grupo
+  usuarioId       Int?
+  canalId         Int?
   fecha           DateTime  @default(now())
   cotizo          Boolean   @default(false)
   cerro           Boolean   @default(false)
-  motivoPerdidaId Int?                            // referencia a Grupo: Silencio/Precio/etc.
+  motivoPerdidaId Int?
   usoProtocolo    Boolean   @default(false)
   nota            String?   @db.VarChar(500)
 
   fec_creacion    DateTime  @default(now())
+  usu_creacion    String?
   version         Int       @default(1)
   deletedAt       DateTime?
 
@@ -368,20 +383,23 @@ model Conversacion {
 }
 
 // ================================================================
-// VENTA — con medio de pago y comisión, tal como opera Río Rayo
+// VENTA — con medio de pago y comisión snapshot
+// La comisión se calcula al momento de la venta tomando el %
+// de UsuarioEmpresa (comisionEfectivo o comisionTarjeta) y se
+// guarda como snapshot — no cambia si después se edita el % base.
 // ================================================================
 model Venta {
   id                  Int       @id @default(autoincrement())
   empresaId           Int
   clienteId           Int
   productoId          Int
-  vendedoraId         Int?                          // Usuario que vendió
+  vendedoraId         Int?
   fecha               DateTime  @default(now())
-  precioVenta         Decimal   @db.Decimal(12, 2)   // PVP real cobrado (puede llevar descuento)
-  medioPagoId         Int                            // referencia a Grupo: EFECTIVO/TARJETA
-  porcentajeComision  Decimal   @db.Decimal(5, 2)     // 20.00 o 13.00 segun medio de pago, snapshot
-  valorComision       Decimal   @db.Decimal(12, 2)    // precioVenta * porcentajeComision, calculado al guardar
-  estadoId            Int                             // referencia a Grupo: CONFIRMADA/ANULADA
+  precioVenta         Decimal   @db.Decimal(12, 2)
+  medioPagoId         Int
+  porcentajeComision  Decimal   @db.Decimal(5, 2)  // snapshot de comisionEfectivo/comisionTarjeta
+  valorComision       Decimal   @db.Decimal(12, 2) // precioVenta * porcentajeComision
+  estadoId            Int
 
   fec_creacion        DateTime  @default(now())
   usu_creacion        String?
@@ -390,13 +408,13 @@ model Venta {
   version             Int       @default(1)
   deletedAt           DateTime?
 
-  empresa             Empresa         @relation("Venta_empresa", fields: [empresaId], references: [id])
-  cliente             Cliente         @relation("Venta_Cliente", fields: [clienteId], references: [id])
-  producto             Producto        @relation("Venta_Producto", fields: [productoId], references: [id])
-  vendedora            Usuario?        @relation("Venta_Vendedora", fields: [vendedoraId], references: [id])
-  medioPago             Grupo           @relation("Venta_MedioPago", fields: [medioPagoId], references: [id])
-  estado                Grupo           @relation("Venta_Estado", fields: [estadoId], references: [id])
-  repartos              RepartoUtilidad[] @relation("RepartoUtilidad_Venta")
+  empresa             Empresa           @relation("Venta_empresa", fields: [empresaId], references: [id])
+  cliente             Cliente           @relation("Venta_Cliente", fields: [clienteId], references: [id])
+  producto            Producto          @relation("Venta_Producto", fields: [productoId], references: [id])
+  vendedora           Usuario?          @relation("Venta_Vendedora", fields: [vendedoraId], references: [id])
+  medioPago           Grupo             @relation("Venta_MedioPago", fields: [medioPagoId], references: [id])
+  estado              Grupo             @relation("Venta_Estado", fields: [estadoId], references: [id])
+  repartos            RepartoUtilidad[] @relation("RepartoUtilidad_Venta")
 
   @@index([empresaId, fecha])
   @@index([clienteId])
@@ -404,15 +422,19 @@ model Venta {
 }
 
 // ================================================================
-// SOCIO — reparto de utilidad entre socias (JUNTAS/LAURA/NATY que
-// vimos en la hoja VENTAS de ORGANIZADO)
+// SOCIO — reparto de utilidad entre socias (LAURA/NATY/JUNTAS)
 // ================================================================
 model Socio {
   id                Int       @id @default(autoincrement())
   empresaId         Int
   nombre            String    @db.VarChar(100)
-  porcentajeDefecto Decimal?  @db.Decimal(5, 2)   // % de reparto habitual, editable por venta
+  porcentajeDefecto Decimal?  @db.Decimal(5, 2)
   activo            Boolean   @default(true)
+
+  fec_creacion      DateTime  @default(now())
+  usu_creacion      String?
+  fec_actualizacion DateTime  @updatedAt
+  usu_actualizacion String?
   version           Int       @default(1)
   deletedAt         DateTime?
 
@@ -436,7 +458,8 @@ model RepartoUtilidad {
 }
 
 // ================================================================
-// META MENSUAL — metas 30-60-90 / presupuesto mensual de ventas
+// META MENSUAL — presupuesto mensual de ventas por empresa
+// Las metas individuales por vendedora van en UsuarioEmpresa.metaMensual
 // ================================================================
 model MetaMensual {
   id              Int      @id @default(autoincrement())
@@ -444,7 +467,7 @@ model MetaMensual {
   anio            Int
   mes             Int
   metaIngresos    Decimal  @db.Decimal(14, 2)
-  metaVentas      Int?                              // numero de piezas/ventas meta
+  metaVentas      Int?
   observaciones   String?  @db.VarChar(500)
   version         Int      @default(1)
   deletedAt       DateTime?
@@ -453,4 +476,3 @@ model MetaMensual {
 
   @@unique([empresaId, anio, mes])
 }
-
