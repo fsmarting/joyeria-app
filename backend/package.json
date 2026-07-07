@@ -22,7 +22,11 @@
     "dotenv": "^16.4.5",
     "express": "^4.21.0",
     "graphql": "^16.9.0",
-    "jsonwebtoken": "^9.0.2"
+    "jsonwebtoken": "^9.0.2",
+    "prop-types": "^15.8.1",
+    "react-bootstrap": "^2.10.10",
+    "react-select": "^5.10.2",
+    "react-toastify": "^11.1.0"
   },
   "devDependencies": {
     "prisma": "^6.16.2"

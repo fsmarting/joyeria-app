@@ -1,4 +1,3 @@
-// backend/src/App.js
 import "dotenv/config";
 import jwt from "jsonwebtoken";
 import express from "express";
@@ -8,54 +7,81 @@ import { expressMiddleware } from "@as-integrations/express4";
 import { mergeTypeDefs, mergeResolvers } from "@graphql-tools/merge";
 import { ApolloServerPluginLandingPageLocalDefault } from "@apollo/server/plugin/landingPage/default";
 import { prisma } from "./helpers/dbActions.js";
-
-// ---------- Rutas REST ----------
 import authRouter from "./routes/auth.js";
 
-// ---------- TypeDefs por módulo ----------
+import sharedTypeDefs from "./schema/shared.typeDefs.js";
 import empresaTypeDefs from "./schema/empresa.typeDefs.js";
 import catalogoTypeDefs from "./schema/catalogo.typeDefs.js";
 import subcatalogoTypeDefs from "./schema/subcatalogo.typeDefs.js";
 import grupoTypeDefs from "./schema/grupo.typeDefs.js";
 import usuarioTypeDefs from "./schema/usuario.typeDefs.js";
-// A medida que construyamos cada módulo nuevo (Producto, OrdenProduccion,
-// Cliente, Venta...) se agrega aquí su propio archivo de typeDefs.
+import usuarioEmpresaTypeDefs from "./schema/usuarioEmpresa.typeDefs.js";
+import terceroTypeDefs from "./schema/tercero.typeDefs.js";
+import productoTypeDefs from "./schema/producto.typeDefs.js";
+import piedraTypeDefs from "./schema/piedra.typeDefs.js";
+import compraInsumoTypeDefs from "./schema/compraInsumo.typeDefs.js";
+import ordenProduccionTypeDefs from "./schema/ordenProduccion.typeDefs.js";
+import ventaTypeDefs from "./schema/venta.typeDefs.js";
+import conversacionTypeDefs from "./schema/conversacion.typeDefs.js";
+import dashboardTypeDefs from "./schema/dashboard.typeDefs.js";
+import muestrarioTypeDefs from "./schema/muestrario.typeDefs.js";
+import metaMensualTypeDefs from "./schema/metaMensual.typeDefs.js";
 
-// ---------- Resolvers por módulo ----------
 import empresaResolvers from "./resolvers/empresa.resolvers.js";
 import catalogoResolvers from "./resolvers/catalogo.resolvers.js";
 import subcatalogoResolvers from "./resolvers/subcatalogo.resolvers.js";
 import grupoResolvers from "./resolvers/grupo.resolvers.js";
 import usuarioResolvers from "./resolvers/usuario.resolvers.js";
-
-// --- Sentry (opcional) ---
-// JoyeriaApp necesita su PROPIO proyecto en Sentry — no reutilizar el DSN
-// de FinanzasApp, o los errores de ambos sistemas se mezclarían en el
-// mismo dashboard. Cuando tenga el DSN de Joyería, descomente este bloque:
-//
-// import * as Sentry from '@sentry/node';
-// Sentry.init({ dsn: process.env.SENTRY_DSN });
+import usuarioEmpresaResolvers from "./resolvers/usuarioEmpresa.resolvers.js";
+import terceroResolvers from "./resolvers/tercero.resolvers.js";
+import productoResolvers from "./resolvers/producto.resolvers.js";
+import piedraResolvers from "./resolvers/piedra.resolvers.js";
+import compraInsumoResolvers from "./resolvers/compraInsumo.resolvers.js";
+import ordenProduccionResolvers from "./resolvers/ordenProduccion.resolvers.js";
+import ventaResolvers from "./resolvers/venta.resolvers.js";
+import conversacionResolvers from "./resolvers/conversacion.resolvers.js";
+import dashboardResolvers from "./resolvers/dashboard.resolvers.js";
+import muestrarioResolvers from "./resolvers/muestrario.resolvers.js";
+import metaMensualResolvers from "./resolvers/metaMensual.resolvers.js";
 
 const app = express();
-
-app.use(cors({ origin: true, credentials: true }));
+app.use(
+  cors({
+    origin: [
+      "http://localhost:5173",
+      "https://observant-success-production-90d3.up.railway.app",
+    ],
+    credentials: true,
+  }),
+);
 app.use(express.json());
-
 app.get("/health", (req, res) => res.json({ status: "ok" }));
 app.use("/auth", authRouter);
 
-// ---------- GraphQL ----------
 const rootSDL = /* GraphQL */ `
   type Query
+  type Mutation
 `;
 
 const typeDefs = mergeTypeDefs([
   rootSDL,
+  sharedTypeDefs,
   empresaTypeDefs,
   catalogoTypeDefs,
   subcatalogoTypeDefs,
   grupoTypeDefs,
   usuarioTypeDefs,
+  usuarioEmpresaTypeDefs,
+  terceroTypeDefs,
+  productoTypeDefs,
+  piedraTypeDefs,
+  compraInsumoTypeDefs,
+  ordenProduccionTypeDefs,
+  ventaTypeDefs,
+  conversacionTypeDefs,
+  dashboardTypeDefs,
+  muestrarioTypeDefs,
+  metaMensualTypeDefs,
 ]);
 
 const resolvers = mergeResolvers([
@@ -64,6 +90,17 @@ const resolvers = mergeResolvers([
   subcatalogoResolvers,
   grupoResolvers,
   usuarioResolvers,
+  usuarioEmpresaResolvers,
+  terceroResolvers,
+  productoResolvers,
+  piedraResolvers,
+  compraInsumoResolvers,
+  ordenProduccionResolvers,
+  ventaResolvers,
+  conversacionResolvers,
+  dashboardResolvers,
+  muestrarioResolvers,
+  metaMensualResolvers,
 ]);
 
 async function startServer() {
@@ -73,17 +110,11 @@ async function startServer() {
     csrfPrevention: false,
     plugins: [ApolloServerPluginLandingPageLocalDefault()],
     formatError(err) {
-      console.error("💥 GQL formatError:", {
-        message: err.message,
-        path: err.path,
-        extensions: err.extensions,
-      });
+      console.error("💥 GQL:", err.message);
       return err;
     },
   });
-
   await apolloServer.start();
-
   app.use(
     "/graphql",
     cors(),
@@ -91,39 +122,32 @@ async function startServer() {
       context: async ({ req }) => {
         const authHeader = req.headers.authorization || "";
         let user = null;
-
         if (authHeader.startsWith("Bearer ")) {
-          const token = authHeader.slice(7);
           try {
             user = jwt.verify(
-              token,
+              authHeader.slice(7),
               process.env.JWT_SECRET || "dev_secret_cambia_esto",
             );
-          } catch (e) {
-            console.log("❌ TOKEN INVÁLIDO:", e.message);
+            user.empresaActualId = user.empresaId;
+          } catch {
             throw new Error("UNAUTHENTICATED");
           }
         }
-
         return { prisma, user };
       },
     }),
   );
-
   const PORT = process.env.PORT || 4000;
   app.listen(PORT, () => {
-    console.log(`🚀 JoyeriaApp backend en http://localhost:${PORT}`);
-    console.log(`📡 GraphQL disponible en http://localhost:${PORT}/graphql`);
+    console.log(`🚀 JoyeriaApp en http://localhost:${PORT}`);
   });
-
-  const shutdown = async (signal) => {
-    console.log(`\n🛑 Señal recibida: ${signal}. Cerrando servidor...`);
+  process.on("SIGINT", async () => {
     await prisma.$disconnect();
     process.exit(0);
-  };
-
-  process.on("SIGINT", () => shutdown("SIGINT"));
-  process.on("SIGTERM", () => shutdown("SIGTERM"));
+  });
+  process.on("SIGTERM", async () => {
+    await prisma.$disconnect();
+    process.exit(0);
+  });
 }
-
 startServer();

@@ -1,21 +1,21 @@
-import { Router } from 'express';
-import bcrypt from 'bcryptjs';
-import jwt from 'jsonwebtoken';
-import { prisma } from '../helpers/dbActions.js';
+import { Router } from "express";
+import bcrypt from "bcryptjs";
+import jwt from "jsonwebtoken";
+import { prisma } from "../helpers/dbActions.js";
 
 const router = Router();
 
-router.get('/ping', (req, res) => res.json({ ok: true }));
+router.get("/ping", (req, res) => res.json({ ok: true }));
 
 // ----------------------------------------------------------------
 // GET /auth/empresas?codigo=ADMIN
 // Devuelve las empresas del usuario para el selector de login.
 // Mismo patrón que FinanzasApp.
 // ----------------------------------------------------------------
-router.get('/empresas', async (req, res) => {
+router.get("/empresas", async (req, res) => {
   try {
     const { codigo } = req.query;
-    if (!codigo) return res.status(400).json({ error: 'Código requerido' });
+    if (!codigo) return res.status(400).json({ error: "Código requerido" });
 
     const usuario = await prisma.usuario.findFirst({
       where: { codigo: codigo.toUpperCase(), deletedAt: null },
@@ -30,15 +30,15 @@ router.get('/empresas', async (req, res) => {
     if (!usuario) return res.json({ empresas: [] });
 
     const empresas = usuario.empresasAsignadas.map((ue) => ({
-      empresaId:     ue.empresaId,
+      empresaId: ue.empresaId,
       empresaCodigo: ue.empresa.codigo,
       empresaNombre: ue.empresa.nombre,
     }));
 
     res.json({ empresas });
   } catch (error) {
-    console.error('Error en /auth/empresas:', error);
-    res.status(500).json({ error: 'Error interno' });
+    console.error("Error en /auth/empresas:", error);
+    res.status(500).json({ error: "Error interno" });
   }
 });
 
@@ -48,13 +48,13 @@ router.get('/empresas', async (req, res) => {
 // El token lleva empresaId, rolId y las comisiones del usuario
 // para esa empresa — viajan en el contexto de Apollo.
 // ----------------------------------------------------------------
-router.post('/login', async (req, res) => {
+router.post("/login", async (req, res) => {
   try {
     const { codigo, empresaId, password } = req.body;
 
     if (!codigo || !empresaId || !password) {
       return res.status(400).json({
-        error: 'Código, empresa y contraseña son obligatorios',
+        error: "Código, empresa y contraseña son obligatorios",
       });
     }
 
@@ -62,50 +62,60 @@ router.post('/login', async (req, res) => {
       where: { codigo: codigo.toUpperCase(), deletedAt: null },
       include: {
         empresasAsignadas: {
-          where:   { empresaId: Number(empresaId), deletedAt: null },
+          where: { empresaId: Number(empresaId), deletedAt: null },
           include: { empresa: true, rol: true },
         },
       },
     });
 
     if (!usuario || usuario.empresasAsignadas.length === 0) {
-      return res.status(401).json({ error: 'Credenciales inválidas' });
+      return res.status(401).json({ error: "Credenciales inválidas" });
     }
 
     const passwordValida = await bcrypt.compare(password, usuario.password);
     if (!passwordValida) {
-      return res.status(401).json({ error: 'Credenciales inválidas' });
+      return res.status(401).json({ error: "Credenciales inválidas" });
     }
 
     const ue = usuario.empresasAsignadas[0];
 
     const token = jwt.sign(
       {
-        id:               usuario.id,
-        codigo:           usuario.codigo,
-        empresaId:        ue.empresaId,
-        rolId:            ue.rolId,
+        id: usuario.id,
+        codigo: usuario.codigo,
+        empresaId: ue.empresaId,
+        rolId: ue.rolId,
         comisionEfectivo: Number(ue.comisionEfectivo),
-        comisionTarjeta:  Number(ue.comisionTarjeta),
+        comisionTarjeta: Number(ue.comisionTarjeta),
       },
-      process.env.JWT_SECRET || 'dev_secret_cambia_esto',
-      { expiresIn: '8h' },
+      process.env.JWT_SECRET || "dev_secret_cambia_esto",
+      { expiresIn: "8h" },
     );
 
     await prisma.usuario.update({
       where: { id: usuario.id },
-      data:  { ultimo_login: new Date() },
+      data: { ultimo_login: new Date() },
     });
 
     res.json({
       token,
-      usuario: { id: usuario.id, codigo: usuario.codigo, nombre: usuario.nombre },
-      empresa: { id: ue.empresaId, codigo: ue.empresa.codigo, nombre: ue.empresa.nombre },
-      rol:     ue.rol ? { id: ue.rolId, nombre: ue.rol.nombre } : null,
+      usuario: {
+        id: usuario.id,
+        codigo: usuario.codigo,
+        nombre: usuario.nombre,
+      },
+      empresa: {
+        id: ue.empresaId,
+        codigo: ue.empresa.codigo,
+        nombre: ue.empresa.nombre,
+      },
+      rol: ue.rol
+        ? { id: ue.rolId, codigo: ue.rol.codigo, nombre: ue.rol.nombre }
+        : null,
     });
   } catch (error) {
-    console.error('Error en /auth/login:', error);
-    res.status(500).json({ error: 'Error interno al iniciar sesión' });
+    console.error("Error en /auth/login:", error);
+    res.status(500).json({ error: "Error interno al iniciar sesión" });
   }
 });
 

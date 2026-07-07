@@ -13,9 +13,14 @@
     "@apollo/client": "^3.11.0",
     "axios": "^1.18.1",
     "graphql": "^16.9.0",
+    "prop-types": "^15.8.1",
     "react": "^18.3.1",
+    "react-bootstrap": "^2.10.10",
     "react-dom": "^18.3.1",
-    "react-router-dom": "^6.26.0"
+    "react-router-dom": "^6.26.0",
+    "react-select": "^5.10.2",
+    "react-toastify": "^11.1.0",
+    "recharts": "^3.9.1"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.3.1",
