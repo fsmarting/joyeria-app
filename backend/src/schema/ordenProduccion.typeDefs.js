@@ -80,12 +80,14 @@ export default /* GraphQL */ `
   }
   input OrdenProduccionUpdateInput {
     id: Int!
+    empresaId: Int!
     numero: String!
     descripcion: String
     productoId: Int!
     joyeroId: Int!
     estadoId: Int!
     cantidadProgramada: Int!
+    cantidadEntregada: Int!
     fechaEnvio: String!
     fechaEstimada: String
     fechaEntrega: String

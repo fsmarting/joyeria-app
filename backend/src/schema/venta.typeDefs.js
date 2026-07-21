@@ -5,26 +5,37 @@ export default /* GraphQL */ `
   }
   type Venta {
     id: Int! empresaId: Int! clienteId: Int! productoId: Int!
-    vendedoraId: Int canalId: Int fecha: String! precioVenta: Float!
+    vendedoraId: Int canalId: Int cotizacionId: Int
+    fecha: String! precioVenta: Float!
     medioPagoId: Int! porcentajeComision: Float! valorComision: Float!
     estadoId: Int! version: Int!
-    cliente: Tercero producto: Producto vendedora: Usuario
-    canal: Grupo medioPago: Grupo estado: Grupo
-    repartos: [RepartoUtilidad!]!
+    cliente:     Tercero
+    producto:    Producto
+    vendedora:   Usuario
+    canal:       Grupo
+    medioPago:   Grupo
+    estado:      Grupo
+    cotizacion:  Cotizacion
+    repartos:    [RepartoUtilidad!]!
+    origenLabel: String
   }
   type VentaEdge { node: Venta! cursor: ID! }
   type VentaConnection { edges: [VentaEdge!]! pageInfo: PageInfo! }
+
   input VentaInput {
     empresaId: Int! clienteId: Int! productoId: Int!
-    vendedoraId: Int canalId: Int fecha: String! precioVenta: Float!
+    vendedoraId: Int canalId: Int cotizacionId: Int
+    fecha: String! precioVenta: Float!
     medioPagoId: Int! estadoId: Int! version: Int!
   }
   input VentaUpdateInput {
     id: Int! clienteId: Int! productoId: Int!
-    vendedoraId: Int canalId: Int fecha: String! precioVenta: Float!
+    vendedoraId: Int canalId: Int
+    fecha: String! precioVenta: Float!
     medioPagoId: Int! estadoId: Int! version: Int!
   }
   input RepartoInput { ventaId: Int! socioId: Int! porcentaje: Float! }
+
   extend type Query {
     ventasFiltradosCursor(
       first: Int after: String orden: [String] direccion: [String] busqueda: String

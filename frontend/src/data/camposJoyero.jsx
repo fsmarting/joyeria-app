@@ -1,19 +1,21 @@
 export const camposJoyero = [
   {
+    nombre: "telefono",
+    etiqueta: "Celular",
+    tipoForm: "text",
+    obligatorio: true,
+    maxLength: 30,
+    ancho: "130px",
+    ordenListado: 1,
+    placeholder: "3001234567",
+  },
+  {
     nombre: "nombre",
     etiqueta: "Nombre",
     tipoForm: "text",
-    obligatorio: true,
+    obligatorio: false,
     maxLength: 150,
     ancho: "auto",
-    ordenListado: 1,
-  },
-  {
-    nombre: "telefono",
-    etiqueta: "Teléfono",
-    tipoForm: "text",
-    maxLength: 30,
-    ancho: "130px",
     ordenListado: 2,
   },
   {

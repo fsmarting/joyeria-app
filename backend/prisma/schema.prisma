@@ -26,7 +26,19 @@ model Empresa {
   metasMensuales MetaMensual[] @relation("MetaMensual_empresa")
   ordenesProduccion OrdenProduccion[] @relation("OrdenProduccion_empresa")
   muestrarios Muestrario[] @relation("Muestrario_Empresa")
+  otizaciones Cotizacion[] @relation("Cotizacion_Empresa")
 }
+
+
+
+
+
+
+
+// ── Agregar en model Producto ─────────────────────────────────────
+//   cotizacionItems CotizacionItem[] @relation("CotizacionItem_Producto")
+
+
 
 model Usuario {
   id Int @id @default(autoincrement())
@@ -51,6 +63,7 @@ model Usuario {
   ventasComoVendedora Venta[] @relation("Venta_Vendedora")
   conversaciones Conversacion[] @relation("Conversacion_Usuario")
   muestrarios Muestrario[] @relation("Muestrario_Vendedora")
+  cotizaciones Cotizacion[] @relation("Cotizacion_Vendedora")
 }
 
 model UsuarioEmpresa {
@@ -128,6 +141,10 @@ model Grupo {
   tercerosCanal Tercero[] @relation("Tercero_canal")
   terceroEspecialidades TerceroEspecialidad[] @relation("TerceroEspecialidad_Grupo")
   ventasCanal Venta[] @relation("Venta_Canal")
+  productosPiedra ProductoPiedra[] @relation("ProductoPiedra_Tipo")
+  conversacionesTierEstimado Conversacion[] @relation("Conversacion_TierEstimado")
+  cotizacionesEstado Cotizacion[] @relation("Cotizacion_Estado")
+
 
   @@unique([subcatalogoId, codigo])
 }
@@ -164,6 +181,7 @@ model Tercero {
   ordenesComoJoyero OrdenProduccion[] @relation("OrdenProduccion_Joyero")
   repartos RepartoUtilidad[] @relation("RepartoUtilidad_Socio")
   comprasComoProveedor CompraInsumo[] @relation("CompraInsumo_Proveedor")
+  cotizaciones Cotizacion[] @relation("Cotizacion_Cliente")
   @@index([empresaId, tipoId])
 }
 
@@ -227,15 +245,15 @@ model Producto {
   usu_actualizacion String?
   version Int @default(1)
   deletedAt DateTime?
+  multiplicador Decimal @default(2.25) @db.Decimal(5,2)
   empresa Empresa @relation("Producto_empresa", fields: [empresaId], references: [id])
   categoria Grupo? @relation("Producto_Categoria", fields: [categoriaId], references: [id])
   piedras ProductoPiedra[] @relation("ProductoPiedra_Producto")
   ordenesProduccion OrdenProduccion[] @relation("OrdenProduccion_Producto")
   ventas Venta[] @relation("Venta_Producto")
-  conversaciones Conversacion[] @relation("Conversacion_Producto")
-
-  
   muestrarioItems MuestrarioItem[] @relation("MuestrarioItem_Producto")
+  convsPiezasInteres ConversacionProducto[] @relation("ConversacionProducto_Prod")
+  cotizacionItems CotizacionItem[] @relation("CotizacionItem_Producto")
   @@unique([empresaId, referencia])
   @@index([empresaId, categoriaId])
 }
@@ -244,14 +262,17 @@ model ProductoPiedra {
   id Int @id @default(autoincrement())
   productoId Int
   piedraId Int
+  tipoId      Int?
   cantidad Decimal @db.Decimal(12,4)
   costoEstandardUnitario Decimal @default(0) @db.Decimal(14,2)
   costoEstandardTotal Decimal @default(0) @db.Decimal(14,2)
   desperdicio Decimal @default(0) @db.Decimal(5,2)
+  descripcion String? @db.VarChar(200)
   version Int @default(1)
   deletedAt DateTime?
   producto Producto @relation("ProductoPiedra_Producto", fields: [productoId], references: [id], onDelete: Cascade)
   piedra Piedra @relation("ProductoPiedra_Piedra", fields: [piedraId], references: [id])
+  tipoPiedra  Grupo?  @relation("ProductoPiedra_Tipo", fields: [tipoId], references: [id])
   @@index([productoId])
   @@index([piedraId])
 }
@@ -348,6 +369,7 @@ model Venta {
   productoId Int
   vendedoraId Int?
   muestrarioItemId Int?
+  cotizacionId Int?
   fecha DateTime @default(now())
   precioVenta Decimal @db.Decimal(12,2)
   medioPagoId Int
@@ -370,6 +392,8 @@ model Venta {
   repartos RepartoUtilidad[] @relation("RepartoUtilidad_Venta")
   canal   Grupo? @relation("Venta_Canal", fields: [canalId], references: [id])
   muestrarioItem MuestrarioItem? @relation("Venta_MuestrarioItem", fields: [muestrarioItemId], references: [id])
+  cotizacion   Cotizacion? @relation("Venta_Cotizacion", fields: [cotizacionId], references: [id])
+
   @@index([empresaId, fecha])
   @@index([clienteId])
 }
@@ -400,6 +424,10 @@ model Conversacion {
   motivoPerdidaId Int?
   usoProtocolo Boolean @default(false)
   nota String? @db.VarChar(500)
+  telefono        String?  @db.VarChar(30)
+  nombreContacto  String?  @db.VarChar(150)
+  tierEstimadoId  Int?
+  tiempoRespuesta String?  @db.VarChar(200)
   fec_creacion DateTime @default(now())
   usu_creacion String?
   version Int @default(1)
@@ -409,9 +437,26 @@ model Conversacion {
   usuario Usuario? @relation("Conversacion_Usuario", fields: [usuarioId], references: [id])
   canal Grupo? @relation("Conversacion_Canal", fields: [canalId], references: [id])
   motivoPerdida Grupo? @relation("Conversacion_MotivoPerdida", fields: [motivoPerdidaId], references: [id])
-  producto   Producto? @relation("Conversacion_Producto", fields: [productoId], references: [id])
+  tierEstimado    Grupo?   @relation("Conversacion_TierEstimado", fields: [tierEstimadoId], references: [id])
+  piezas          ConversacionProducto[] @relation("ConversacionProducto_Conv")
+  cotizaciones Cotizacion[] @relation("Cotizacion_Conversacion")
   @@index([empresaId, fecha])
 }
+model ConversacionProducto {
+  id             Int       @id @default(autoincrement())
+  conversacionId Int
+  productoId     Int
+  version        Int       @default(1)
+  deletedAt      DateTime?
+
+  conversacion Conversacion @relation("ConversacionProducto_Conv", fields: [conversacionId], references: [id], onDelete: Cascade)
+  producto     Producto     @relation("ConversacionProducto_Prod", fields: [productoId],     references: [id])
+
+  @@index([conversacionId])
+}
+
+
+
 
 model MetaMensual {
   id Int @id @default(autoincrement())
@@ -477,4 +522,50 @@ model MuestrarioItem {
   producto Producto @relation("MuestrarioItem_Producto", fields: [productoId], references: [id])
   ventas Venta[] @relation("Venta_MuestrarioItem")
   @@index([muestrarioId])
+}
+
+model Cotizacion {
+  id               Int       @id @default(autoincrement())
+  empresaId        Int
+  numero           String    @db.VarChar(20)
+  clienteId        Int?
+  conversacionId   Int?
+  vendedoraId      Int?
+  fecha            DateTime  @default(now())
+  validezDias      Int       @default(15)
+  estadoId         Int
+  nota             String?   @db.VarChar(500)
+  usu_creacion     String?   @db.VarChar(30)
+  usu_actualizacion String?  @db.VarChar(30)
+  version          Int       @default(1)
+  deletedAt        DateTime?
+
+  empresa      Empresa      @relation("Cotizacion_Empresa",       fields: [empresaId],      references: [id])
+  cliente      Tercero?     @relation("Cotizacion_Cliente",       fields: [clienteId],      references: [id])
+  conversacion Conversacion?@relation("Cotizacion_Conversacion",  fields: [conversacionId], references: [id])
+  vendedora    Usuario?     @relation("Cotizacion_Vendedora",     fields: [vendedoraId],    references: [id])
+  estado       Grupo        @relation("Cotizacion_Estado",        fields: [estadoId],       references: [id])
+  items        CotizacionItem[] @relation("CotizacionItem_Cotizacion")
+  ventas Venta[] @relation("Venta_Cotizacion")
+
+  @@unique([empresaId, numero])
+  @@index([empresaId])
+}
+
+
+model CotizacionItem {
+  id             Int       @id @default(autoincrement())
+  cotizacionId   Int
+  productoId     Int
+  precioUnitario Decimal   @default(0) @db.Decimal(12,2)
+  cantidad       Int       @default(1)
+  subtotal       Decimal   @default(0) @db.Decimal(12,2)
+  nota           String?   @db.VarChar(300)
+  version        Int       @default(1)
+  deletedAt      DateTime?
+
+  cotizacion Cotizacion @relation("CotizacionItem_Cotizacion", fields: [cotizacionId], references: [id], onDelete: Cascade)
+  producto   Producto   @relation("CotizacionItem_Producto",   fields: [productoId],   references: [id])
+
+  @@index([cotizacionId])
 }

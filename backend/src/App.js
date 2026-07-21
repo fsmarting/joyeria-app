@@ -26,6 +26,7 @@ import conversacionTypeDefs from "./schema/conversacion.typeDefs.js";
 import dashboardTypeDefs from "./schema/dashboard.typeDefs.js";
 import muestrarioTypeDefs from "./schema/muestrario.typeDefs.js";
 import metaMensualTypeDefs from "./schema/metaMensual.typeDefs.js";
+import cotizacionTypeDefs from "./schema/cotizacion.typeDefs.js";
 
 import empresaResolvers from "./resolvers/empresa.resolvers.js";
 import catalogoResolvers from "./resolvers/catalogo.resolvers.js";
@@ -43,6 +44,8 @@ import conversacionResolvers from "./resolvers/conversacion.resolvers.js";
 import dashboardResolvers from "./resolvers/dashboard.resolvers.js";
 import muestrarioResolvers from "./resolvers/muestrario.resolvers.js";
 import metaMensualResolvers from "./resolvers/metaMensual.resolvers.js";
+import cotizacionResolvers from "./resolvers/cotizacion.resolvers.js";
+import perfilResolvers from "./resolvers/perfil.resolvers.js";
 
 const app = express();
 app.use(
@@ -82,6 +85,7 @@ const typeDefs = mergeTypeDefs([
   dashboardTypeDefs,
   muestrarioTypeDefs,
   metaMensualTypeDefs,
+  cotizacionTypeDefs,
 ]);
 
 const resolvers = mergeResolvers([
@@ -101,6 +105,8 @@ const resolvers = mergeResolvers([
   dashboardResolvers,
   muestrarioResolvers,
   metaMensualResolvers,
+  cotizacionResolvers,
+  perfilResolvers,
 ]);
 
 async function startServer() {
