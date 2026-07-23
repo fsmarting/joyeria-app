@@ -176,22 +176,24 @@ function useCamposTercero(tipoCodigo) {
   return useMemo(() => {
     const base = [
       {
+        nombre: "telefono",
+        etiqueta: "Teléfono",
+        tipoForm: "text",
+        obligatorio: true,
+        maxLength: 30,
+        ancho: "130px",
+        ordenListado: 1,
+      },
+      {
         nombre: "nombre",
         etiqueta: "Nombre",
         tipoForm: "text",
         obligatorio: true,
         maxLength: 150,
         ancho: "auto",
-        ordenListado: 1,
-      },
-      {
-        nombre: "telefono",
-        etiqueta: "Teléfono",
-        tipoForm: "text",
-        maxLength: 30,
-        ancho: "130px",
         ordenListado: 2,
       },
+
       {
         nombre: "ciudad",
         etiqueta: "Ciudad",

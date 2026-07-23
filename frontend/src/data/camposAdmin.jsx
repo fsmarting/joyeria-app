@@ -63,6 +63,15 @@ export const camposUsuario = [
     soloFormulario: true,
   },
   {
+    nombre: "correo",
+    etiqueta: "correo",
+    tipoForm: "text",
+    obligatorio: true,
+    maxLength: 30,
+    ancho: "200px",
+    ordenListado: 3,
+  },
+  {
     nombre: "estadoId",
     etiqueta: "Estado",
     tipoForm: "select",

@@ -9,6 +9,8 @@ import {
 import { ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import Login from "./modules/pages/Login.jsx";
+import ForgotPassword from "./modules/pages/ForgotPassword.jsx";
+import ResetPassword from "./modules/pages/ResetPassword.jsx";
 import Dashboard from "./modules/pages/Dashboard.jsx";
 import Venta from "./modules/pages/Venta.jsx";
 import Muestrario from "./modules/pages/Muestrario.jsx";
@@ -18,6 +20,7 @@ import Piedra from "./modules/pages/Piedra.jsx";
 import CompraInsumo from "./modules/pages/CompraInsumo.jsx";
 import OrdenProduccion from "./modules/pages/OrdenProduccion.jsx";
 import MetaMensual from "./modules/pages/MetaMensual.jsx";
+import Cotizacion from "./modules/pages/Cotizacion.jsx";
 import {
   Clientas,
   Joyeros,
@@ -32,7 +35,6 @@ import {
   SubCatalogos,
   Grupos,
 } from "./modules/pages/Admin.jsx";
-import Cotizacion from "./modules/pages/Cotizacion.jsx";
 
 // ── Dropdown menu ──────────────────────────────────────────────
 function DropdownMenu({ label, icon, items }) {
@@ -194,19 +196,17 @@ function Navbar({ usuario, empresa, onLogout }) {
   );
 }
 
-// En Routes, agregar:
-<Route path="/cotizaciones" element={<Cotizacion />} />;
-// Fin Mañana
-
 // ── App ────────────────────────────────────────────────────────
 function App() {
   const [sesion, setSesion] = useState(null);
   const [verificando, setVerificando] = useState(true);
+  const [pantallaAuth, setPantallaAuth] = useState("login"); // 'login' | 'forgot'
+
   useEffect(() => {
-    const token = localStorage.getItem("token"),
-      usuario = localStorage.getItem("usuario"),
-      empresa = localStorage.getItem("empresa"),
-      rol = localStorage.getItem("rol");
+    const token = localStorage.getItem("token");
+    const usuario = localStorage.getItem("usuario");
+    const empresa = localStorage.getItem("empresa");
+    const rol = localStorage.getItem("rol");
     if (token && usuario)
       setSesion({
         token,
@@ -216,6 +216,7 @@ function App() {
       });
     setVerificando(false);
   }, []);
+
   const handleLogin = ({ token, usuario, empresa, rol }) =>
     setSesion({ token, usuario, empresa, rol });
   const handleLogout = () => {
@@ -224,14 +225,39 @@ function App() {
   };
 
   if (verificando) return null;
-  if (!sesion)
+
+  // ── Ruta /reset-password — accesible sin sesión ─────────────
+  if (window.location.pathname === "/reset-password") {
     return (
       <>
-        <Login onLogin={handleLogin} />
+        <ResetPassword />
         <ToastContainer position="top-right" autoClose={3000} />
       </>
     );
+  }
 
+  // ── Sin sesión — login o recuperación ───────────────────────
+  if (!sesion) {
+    if (pantallaAuth === "forgot") {
+      return (
+        <>
+          <ForgotPassword onVolver={() => setPantallaAuth("login")} />
+          <ToastContainer position="top-right" autoClose={3000} />
+        </>
+      );
+    }
+    return (
+      <>
+        <Login
+          onLogin={handleLogin}
+          onForgotPassword={() => setPantallaAuth("forgot")}
+        />
+        <ToastContainer position="top-right" autoClose={3000} />
+      </>
+    );
+  }
+
+  // ── Con sesión — aplicación completa ────────────────────────
   return (
     <>
       <Navbar
@@ -267,4 +293,5 @@ function App() {
     </>
   );
 }
+
 export default App;

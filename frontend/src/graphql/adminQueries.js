@@ -62,6 +62,7 @@ export const GET_USUARIOS_CURSOR = gql`
           codigo
           nombre
           foto
+          correo
           estadoId
           version
           estado {
