@@ -53,6 +53,7 @@ export default /* GraphQL */ `
       busqueda: String
     ): PiedraConnection!
     obtenerPiedras: [Piedra!]!
+    validarCodigoPiedra(empresaId: Int!, codigo: String!): Boolean!
   }
   extend type Mutation {
     crearPiedra(input: PiedraInput!): Piedra

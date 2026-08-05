@@ -14,6 +14,7 @@ import { VALIDAR_CODIGO_CATALOGO } from "../graphql/catalogoQueries";
 import { VALIDAR_CODIGO_SUBCATALOGO } from "../graphql/subcatalogoQueries";
 import { VALIDAR_CODIGO_GRUPO } from "../graphql/grupoQueries";
 import { VALIDAR_CODIGO_PRODUCTO } from "../graphql/productoQueries";
+import { VALIDAR_CODIGO_PIEDRA } from "../graphql/piedraQueries";
 
 // Helper para acceder a propiedades anidadas de forma segura
 const obtenerValor = (obj, path) => {
@@ -310,6 +311,9 @@ export default function ModalGenericoAvanzado({
     fetchPolicy: "network-only",
   });
   const [validarProducto] = useLazyQuery(VALIDAR_CODIGO_PRODUCTO, {
+    fetchPolicy: "network-only",
+  });
+  const [validarPiedra] = useLazyQuery(VALIDAR_CODIGO_PIEDRA, {
     fetchPolicy: "network-only",
   });
 
@@ -619,6 +623,22 @@ export default function ModalGenericoAvanzado({
             existeDuplicado = true;
             mensajeError =
               "Esta Referencia de Producto ya está asignado a esta Empresa.";
+          }
+          break;
+
+        case "piedra":
+          if (registroParaEditar && !clavesHanCambiado(["codigo"])) break;
+
+          const { data: respPie } = await validarPiedra({
+            variables: {
+              empresaId: form.empresaId,
+              codigo: form.codigo,
+            },
+          });
+
+          if (respPie?.validarCodigoPiedra) {
+            existeDuplicado = true;
+            mensajeError = "Este Insumo ya está asignado a esta Empresa.";
           }
           break;
 
