@@ -24,16 +24,28 @@ const authLink = setContext((_, { headers }) => {
 // ── Interceptor de sesión expirada ───────────────────────────
 // Detecta UNAUTHENTICATED y dispara el modal desde App.jsx
 const errorLink = onError(({ graphQLErrors, networkError }) => {
+  // Error en graphQLErrors
   if (graphQLErrors) {
     for (const err of graphQLErrors) {
       if (
         err.extensions?.code === "UNAUTHENTICATED" ||
         err.message === "UNAUTHENTICATED"
       ) {
-        // Emitir evento global — App.jsx lo escucha
         window.dispatchEvent(new CustomEvent("SESSION_EXPIRED"));
-        break;
+        return;
       }
+    }
+  }
+  // Error de red/contexto — "Context creation failed: UNAUTHENTICATED"
+  if (networkError) {
+    const msg = networkError.message || "";
+    const body = networkError.result?.errors?.[0]?.message || "";
+    if (
+      msg.includes("UNAUTHENTICATED") ||
+      body.includes("UNAUTHENTICATED") ||
+      networkError.statusCode === 401
+    ) {
+      window.dispatchEvent(new CustomEvent("SESSION_EXPIRED"));
     }
   }
 });
