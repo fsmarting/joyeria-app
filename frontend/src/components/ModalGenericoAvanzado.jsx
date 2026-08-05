@@ -13,6 +13,7 @@ import { VALIDAR_CODIGO_USUARIO_EMPRESA } from "../graphql/usuarioempresaQueries
 import { VALIDAR_CODIGO_CATALOGO } from "../graphql/catalogoQueries";
 import { VALIDAR_CODIGO_SUBCATALOGO } from "../graphql/subcatalogoQueries";
 import { VALIDAR_CODIGO_GRUPO } from "../graphql/grupoQueries";
+import { VALIDAR_CODIGO_PRODUCTO } from "../graphql/productoQueries";
 
 // Helper para acceder a propiedades anidadas de forma segura
 const obtenerValor = (obj, path) => {
@@ -308,6 +309,9 @@ export default function ModalGenericoAvanzado({
   const [validarGrupo] = useLazyQuery(VALIDAR_CODIGO_GRUPO, {
     fetchPolicy: "network-only",
   });
+  const [validarProducto] = useLazyQuery(VALIDAR_CODIGO_PRODUCTO, {
+    fetchPolicy: "network-only",
+  });
 
   // -------------------------------------------------------------------
   // 3. INICIALIZACIÓN
@@ -416,7 +420,6 @@ export default function ModalGenericoAvanzado({
 
     setForm(datosListos);
     setValoresIniciales(datosListos);
-    console.log("datos listos....", form, valoresIniciales);
     setErrores({});
   }, [show, registroParaEditar, fixedMemo, campos]);
 
@@ -513,8 +516,6 @@ export default function ModalGenericoAvanzado({
   // VALIDACIÓN Y GUARDADO
   // -------------------------------------------------------------------
   const verificarUnicidad = async () => {
-    console.log("Formulario....", form);
-    console.log("tipoEntidad....", tipoEntidad);
     const clavesHanCambiado = (keys) =>
       keys.some((k) => form[k] !== valoresIniciales[k]);
     let existeDuplicado = false;
@@ -522,7 +523,6 @@ export default function ModalGenericoAvanzado({
 
     // TRAMPA 2 CORREGIDA: Convertimos a minúsculas para asegurar que coincida
     const entidadNormalizada = tipoEntidad ? tipoEntidad.toLowerCase() : "";
-    console.log("entidadNormalizada....", entidadNormalizada);
     try {
       switch (entidadNormalizada) {
         case "empresa":
@@ -542,22 +542,18 @@ export default function ModalGenericoAvanzado({
           const { data: respUsu } = await validarUsuario({
             variables: { codigo: form.codigo },
           });
-          console.log("respUsu...", respUsu);
           if (respUsu?.validarCodigoUsuario) {
             existeDuplicado = true;
             mensajeError = "Este código ya existe.";
           }
-          console.log("Usuario...break.");
           break; // 🚀 TRAMPA 1 CORREGIDA: Agregamos break
 
         case "usuarioempresa":
           if (registroParaEditar && !clavesHanCambiado(["usuarioId"])) break;
-          console.log("Usuario..Empresa..", form.empresaId, form.usuarioId);
 
           const { data: respUsuEmp } = await validarUsuarioEmpresa({
             variables: { empresaId: form.empresaId, usuarioId: form.usuarioId },
           });
-          console.log("respUsuEmp", respUsuEmp);
           if (respUsuEmp?.validarCodigoUsuarioEmpresa) {
             existeDuplicado = true;
             mensajeError = "Este usuario ya está asignado a esta empresa.";
@@ -565,13 +561,12 @@ export default function ModalGenericoAvanzado({
           break;
 
         case "catalogo":
-          console.log("catalogo");
           if (registroParaEditar && !clavesHanCambiado(["codigo"])) break;
 
           const { data: respCat } = await validarCatalogo({
             variables: { empresaId: form.empresaId, codigo: form.codigo },
           });
-          console.log("respCat", respCat);
+
           if (respCat?.validarCodigoCatalogo) {
             existeDuplicado = true;
             mensajeError =
@@ -580,13 +575,12 @@ export default function ModalGenericoAvanzado({
           break;
 
         case "subcatalogo":
-          console.log("subcatalogo");
           if (registroParaEditar && !clavesHanCambiado(["codigo"])) break;
 
           const { data: respSubCat } = await validarSubCatalogo({
             variables: { catalogoId: form.catalogoId, codigo: form.codigo },
           });
-          console.log("respSubCat", respSubCat);
+
           if (respSubCat?.validarCodigoSubCatalogo) {
             existeDuplicado = true;
             mensajeError =
@@ -595,7 +589,6 @@ export default function ModalGenericoAvanzado({
           break;
 
         case "grupo":
-          console.log("grupo");
           if (registroParaEditar && !clavesHanCambiado(["codigo"])) break;
 
           const { data: respGru } = await validarGrupo({
@@ -604,11 +597,28 @@ export default function ModalGenericoAvanzado({
               codigo: form.codigo,
             },
           });
-          console.log("respGrup", respGru);
+
           if (respGru?.validarCodigoGrupo) {
             existeDuplicado = true;
             mensajeError =
               "Este codigo de Grupo ya está asignado a este Sub Catalogo.";
+          }
+          break;
+
+        case "producto":
+          if (registroParaEditar && !clavesHanCambiado(["referencia"])) break;
+
+          const { data: respPro } = await validarProducto({
+            variables: {
+              empresaId: form.empresaId,
+              referencia: form.referencia,
+            },
+          });
+
+          if (respPro?.validarCodigoProducto) {
+            existeDuplicado = true;
+            mensajeError =
+              "Esta Referencia de Producto ya está asignado a esta Empresa.";
           }
           break;
 
@@ -659,12 +669,25 @@ export default function ModalGenericoAvanzado({
 
     const resultadoValidacion = await verificarUnicidad();
     if (resultadoValidacion.existe) {
-      if (tipoEntidad === "usuarioempresa") {
-        setErrores({ usuarioId: `⚠️ ${resultadoValidacion.mensaje}` });
-      } else {
-        setErrores({ codigo: `⚠️ ${resultadoValidacion.mensaje}` });
+      switch (tipoEntidad) {
+        case "usuarioempresa":
+          setErrores({ usuarioId: `⚠️ ${resultadoValidacion.mensaje}` });
+          break;
+
+        case "producto":
+          setErrores({ referencia: `⚠️ ${resultadoValidacion.mensaje}` });
+          break;
+
+        default:
+          // Si no es ninguno de los anteriores, asume que el campo se llama 'codigo'
+          setErrores({ codigo: `⚠️ ${resultadoValidacion.mensaje}` });
+          break;
       }
+
+      // Apagamos el modo de carga para descongelar la pantalla
       setCargando(false);
+
+      // Detenemos la ejecución para que no guarde el duplicado
       return;
     }
 

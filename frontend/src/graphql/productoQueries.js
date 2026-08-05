@@ -1,4 +1,4 @@
-import { gql } from '@apollo/client';
+import { gql } from "@apollo/client";
 
 const BOM_FIELDS = `
   piedras {
@@ -34,10 +34,47 @@ export const GET_PRODUCTOS_CURSOR = gql`
   }
 `;
 
-export const CREAR_PRODUCTO      = gql`mutation CrearProducto($input: ProductoInput!) { crearProducto(input: $input) { id } }`;
-export const ACTUALIZAR_PRODUCTO = gql`mutation ActualizarProducto($input: ProductoUpdateInput!) { actualizarProducto(input: $input) { id } }`;
-export const ELIMINAR_PRODUCTO   = gql`mutation EliminarProducto($id: Int!) { eliminarProducto(id: $id) }`;
+export const CREAR_PRODUCTO = gql`
+  mutation CrearProducto($input: ProductoInput!) {
+    crearProducto(input: $input) {
+      id
+    }
+  }
+`;
+export const ACTUALIZAR_PRODUCTO = gql`
+  mutation ActualizarProducto($input: ProductoUpdateInput!) {
+    actualizarProducto(input: $input) {
+      id
+    }
+  }
+`;
+export const ELIMINAR_PRODUCTO = gql`
+  mutation EliminarProducto($id: Int!) {
+    eliminarProducto(id: $id)
+  }
+`;
 
-export const AGREGAR_INSUMO_PRODUCTO    = gql`mutation AgregarInsumoProducto($input: ProductoPiedraInput!) { agregarInsumoProducto(input: $input) { id } }`;
-export const ACTUALIZAR_INSUMO_PRODUCTO = gql`mutation ActualizarInsumoProducto($input: ProductoPiedraUpdateInput!) { actualizarInsumoProducto(input: $input) { id } }`;
-export const ELIMINAR_INSUMO_PRODUCTO   = gql`mutation EliminarInsumoProducto($id: Int!) { eliminarInsumoProducto(id: $id) }`;
+export const AGREGAR_INSUMO_PRODUCTO = gql`
+  mutation AgregarInsumoProducto($input: ProductoPiedraInput!) {
+    agregarInsumoProducto(input: $input) {
+      id
+    }
+  }
+`;
+export const ACTUALIZAR_INSUMO_PRODUCTO = gql`
+  mutation ActualizarInsumoProducto($input: ProductoPiedraUpdateInput!) {
+    actualizarInsumoProducto(input: $input) {
+      id
+    }
+  }
+`;
+export const ELIMINAR_INSUMO_PRODUCTO = gql`
+  mutation EliminarInsumoProducto($id: Int!) {
+    eliminarInsumoProducto(id: $id)
+  }
+`;
+export const VALIDAR_CODIGO_PRODUCTO = gql`
+  query ValidarCodigoProducto($empresaId: Int!, $referencia: String!) {
+    validarCodigoProducto(empresaId: $empresaId, referencia: $referencia)
+  }
+`;

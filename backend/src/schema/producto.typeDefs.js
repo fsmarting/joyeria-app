@@ -109,6 +109,7 @@ export default /* GraphQL */ `
       busqueda: String
     ): ProductoConnection!
     obtenerProductos: [Producto!]!
+    validarCodigoProducto(empresaId: Int!, referencia: String!): Boolean!
   }
   extend type Mutation {
     crearProducto(input: ProductoInput!): Producto
