@@ -64,6 +64,30 @@ export default {
         },
       };
     },
+    // Validación para el frontend (evitar duplicados visualmente)
+    validarCodigoSubCatalogo: async (
+      _,
+      { catalogoId, codigo },
+      { prisma, user },
+    ) => {
+      requireAuth(user);
+
+      // Verificamos que el catálogo pertenezca a la empresa antes de validar
+      const catalogoPadre = await prisma.catalogo.findFirst({
+        where: { id: Number(catalogoId), empresaId: user.empresaActualId },
+      });
+
+      if (!catalogoPadre) return false; // Si no es mi catálogo, decimos que no existe para no dar info
+
+      const existe = await prisma.subCatalogo.findFirst({
+        where: {
+          catalogoId: Number(catalogoId),
+          codigo: codigo.trim(),
+          deletedAt: null,
+        },
+      });
+      return !!existe;
+    },
   },
 
   Mutation: {

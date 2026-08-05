@@ -335,6 +335,7 @@ export const GET_GRUPOS_CURSOR = gql`
             codigo
             nombre
             catalogo {
+              id
               codigo
               nombre
             }

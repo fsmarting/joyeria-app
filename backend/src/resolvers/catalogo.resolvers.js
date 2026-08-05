@@ -54,6 +54,24 @@ export default {
         },
       };
     },
+    validarCodigoCatalogo: async (
+      _,
+      { empresaId, codigo },
+      { prisma, user },
+    ) => {
+      requireAuth(user);
+      const existe = await prisma.catalogo.findFirst({
+        where: {
+          empresaId: Number(empresaId),
+          codigo: codigo,
+          deletedAt: null,
+        },
+        select: { id: true },
+      });
+      console.log("Existe...", existe);
+      console.log("!!Existe...", !!existe);
+      return !!existe;
+    },
   },
 
   Mutation: {

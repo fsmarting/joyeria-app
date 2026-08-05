@@ -8,6 +8,20 @@
       "program": "${workspaceFolder}/backend/App.js",
       "envFile": "${workspaceFolder}/backend/.env",
       "console": "integratedTerminal"
+    },
+    {
+      "type": "chrome",
+      "request": "launch",
+      "name": "Frontend: React",
+      "url": "http://localhost:5173",
+      "webRoot": "${workspaceFolder}/frontend/src",
+      "userDataDir": "${workspaceFolder}/.vscode/chrome-debug",
+      "sourceMapPathOverrides": {
+        "webpack:///src/*": "${webRoot}/*"
+      }
     }
   ]
 }
+
+
+

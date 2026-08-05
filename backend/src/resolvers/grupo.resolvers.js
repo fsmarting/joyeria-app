@@ -84,6 +84,31 @@ export default {
         },
       };
     },
+
+    validarCodigoGrupo: async (
+      _,
+      { subcatalogoId, codigo },
+      { prisma, user },
+    ) => {
+      requireAuth(user);
+
+      // Verificamos propiedad antes de validar
+      const sub = await prisma.subCatalogo.findFirst({
+        where: { id: Number(subcatalogoId) },
+        include: { catalogo: true },
+      });
+
+      if (!sub || sub.catalogo.empresaId !== user.empresaActualId) return false;
+
+      const existe = await prisma.grupo.findFirst({
+        where: {
+          subcatalogoId: Number(subcatalogoId),
+          codigo: codigo.trim(),
+          deletedAt: null,
+        },
+      });
+      return !!existe;
+    },
   },
 
   Mutation: {
@@ -103,11 +128,14 @@ export default {
 
     actualizarGrupo: async (_, { input }, { prisma, user }) => {
       requireAuth(user);
+      console.log("Input.....", input);
       const { id, version, ...data } = input;
       // Grupo NO tiene usu_actualizacion
+      console.log("Data.....", data);
       const result = await prisma.grupo.updateMany({
         where: { id: Number(id), version: Number(version) },
         data: {
+          subcatalogoId: data.subcatalogoId,
           codigo: data.codigo,
           nombre: data.nombre,
           version: { increment: 1 },

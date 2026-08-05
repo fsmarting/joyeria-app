@@ -231,7 +231,7 @@ export const camposSubCatalogo = [
     obligatorio: true,
     ancho: "160px",
     ordenListado: 1,
-    soloLecturaEnEdicion: true,
+    soloLecturaEnEdicion: false,
     relationConfig: {
       query: OBTENER_CATALOGOS,
       dataKey: "obtenerCatalogos",
@@ -243,9 +243,13 @@ export const camposSubCatalogo = [
         "catalogo.nombre": "nombre",
       },
     },
+    // 👇 AQUÍ ESTÁ LA SOLUCIÓN:
+    // Bloqueamos el SELECT si el registro original pertenece al catálogo ADMIN
+    readOnly: (form, original) => original?.catalogo?.codigo === "ADMIN",
     render: (f) =>
       f.catalogo ? `${f.catalogo.codigo} — ${f.catalogo.nombre}` : "-",
   },
+
   {
     nombre: "catalogo.codigo",
     etiqueta: "Cód. Catálogo",
@@ -280,6 +284,7 @@ export const camposSubCatalogo = [
 ];
 
 // ── Grupo ────────────────────────────────────────────────────────
+
 export const camposGrupo = [
   {
     nombre: "catalogoId",
@@ -289,6 +294,12 @@ export const camposGrupo = [
     ancho: "150px",
     ordenListado: 1,
     soloFormulario: true,
+
+    // 👇 AGREGA ESTA LÍNEA DE CÓDIGO AQUÍ:
+    // Extrae el ID del catálogo sin importar si viene plano o anidado en subcatalogo
+    valueTransformer: (val, registro) =>
+      val || registro?.subcatalogo?.catalogo?.id || "",
+
     relationConfig: {
       query: OBTENER_CATALOGOS,
       dataKey: "obtenerCatalogos",
@@ -296,7 +307,10 @@ export const camposGrupo = [
       displayField: "nombre",
       formatLabel: (c) => `${c.codigo} — ${c.nombre}`,
     },
+    readOnly: (form, original) =>
+      original?.subcatalogo?.catalogo?.codigo === "ADMIN",
   },
+
   {
     nombre: "subcatalogoId",
     etiqueta: "SubCatálogo",

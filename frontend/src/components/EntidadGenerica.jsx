@@ -6,7 +6,6 @@ import { toast } from "react-toastify";
 import ModalGenericoAvanzado from "./ModalGenericoAvanzado.jsx";
 import TablaDatos from "./TablaDatos.jsx";
 import { buildInput } from "../modules/utils/buildInput.js";
-
 export default function EntidadGenerica({
   titulo = "Gestión",
   descripcion = "",
@@ -36,7 +35,6 @@ export default function EntidadGenerica({
     () => ({ ...fixedValues }),
     [JSON.stringify(fixedValues)],
   );
-
   const permisos = useMemo(() => {
     if (readOnly)
       return {
@@ -59,6 +57,7 @@ export default function EntidadGenerica({
         };
       const rolObj = JSON.parse(stored);
       const rol = (rolObj?.codigo || "").trim();
+
       return {
         ver: true,
         crear: rol === "ADM" || rol === "ACT",
@@ -82,7 +81,8 @@ export default function EntidadGenerica({
     () => campos.filter((c) => !(c.soloAdmin && !permisos.esGerencia)),
     [campos, permisos.esGerencia],
   );
-
+  console.log("Campos .Visibles ...", camposVisibles);
+  console.log("Permisos ...", permisos);
   useEffect(() => {
     const handler = setTimeout(() => {
       setBusquedaDebounced(busqueda);
@@ -108,6 +108,7 @@ export default function EntidadGenerica({
     fetchPolicy: "network-only",
     notifyOnNetworkStatusChange: true,
   });
+  console.log("Data .....", data);
 
   const connectionData = useMemo(() => {
     if (!data)
@@ -138,6 +139,8 @@ export default function EntidadGenerica({
   const abrirEditar = (row) => {
     if (!permisos.editar) return toast.error("No tienes permiso para editar");
     setRegistroEditar(row);
+    console.log("Row .....", row);
+    console.log("registroEditar", registroEditar);
     setShow(true);
   };
   const cerrarModal = () => {
