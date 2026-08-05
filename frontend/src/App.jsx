@@ -1,11 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import {
-  Routes,
-  Route,
-  Link,
-  useLocation,
-  useNavigate,
-} from "react-router-dom";
+import { Routes, Route, Link, useLocation } from "react-router-dom";
 import { ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import Login from "./modules/pages/Login.jsx";
@@ -36,7 +30,51 @@ import {
   Grupos,
 } from "./modules/pages/Admin.jsx";
 
-// ── Dropdown menu ──────────────────────────────────────────────
+// ── Modal sesión expirada ─────────────────────────────────────
+function ModalSesionExpirada({ onEntendido }) {
+  return (
+    <div
+      style={{
+        position: "fixed",
+        inset: 0,
+        zIndex: 9999,
+        background: "rgba(0,0,0,0.55)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+      }}
+    >
+      <div
+        style={{
+          background: "#fff",
+          borderRadius: 12,
+          padding: "32px 28px",
+          maxWidth: 380,
+          width: "90%",
+          textAlign: "center",
+          boxShadow: "0 8px 32px rgba(0,0,0,0.25)",
+        }}
+      >
+        <div style={{ fontSize: 40, marginBottom: 12 }}>🔒</div>
+        <h5 style={{ fontWeight: 700, marginBottom: 8 }}>Sesión cerrada</h5>
+        <p style={{ color: "#555", fontSize: 14, marginBottom: 24 }}>
+          No se ha detectado actividad o tu sesión ha expirado.
+          <br />
+          Por seguridad la sesión se ha cerrado automáticamente.
+        </p>
+        <button
+          className="btn btn-primary w-100"
+          style={{ background: "#B8860B", border: "none", fontWeight: 600 }}
+          onClick={onEntendido}
+        >
+          Entendido — Iniciar sesión
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ── Dropdown menu ─────────────────────────────────────────────
 function DropdownMenu({ label, icon, items }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
@@ -107,7 +145,7 @@ function DropdownMenu({ label, icon, items }) {
   );
 }
 
-// ── Navbar ─────────────────────────────────────────────────────
+// ── Navbar ────────────────────────────────────────────────────
 function Navbar({ usuario, empresa, onLogout }) {
   return (
     <nav
@@ -122,7 +160,6 @@ function Navbar({ usuario, empresa, onLogout }) {
         💎
       </Link>
       <div className="d-flex align-items-center gap-1 flex-wrap flex-grow-1">
-        {/* 📊 Análisis */}
         <DropdownMenu
           icon="📊"
           label="Análisis"
@@ -131,8 +168,6 @@ function Navbar({ usuario, empresa, onLogout }) {
             { to: "/metas", label: "Metas mensuales" },
           ]}
         />
-
-        {/* 💰 Comercial */}
         <DropdownMenu
           icon="💰"
           label="Comercial"
@@ -144,8 +179,6 @@ function Navbar({ usuario, empresa, onLogout }) {
             { to: "/cotizaciones", label: "Cotizaciones" },
           ]}
         />
-
-        {/* 🏭 Operaciones */}
         <DropdownMenu
           icon="🏭"
           label="Operaciones"
@@ -157,15 +190,11 @@ function Navbar({ usuario, empresa, onLogout }) {
             { to: "/ordenes", label: "Órdenes de producción" },
           ]}
         />
-
-        {/* 📦 Inventario */}
         <DropdownMenu
           icon="📦"
           label="Inventario"
           items={[{ to: "/productos", label: "Productos & BOM" }]}
         />
-
-        {/* ⚙️ Admin */}
         <DropdownMenu
           icon="⚙️"
           label="Admin"
@@ -196,11 +225,12 @@ function Navbar({ usuario, empresa, onLogout }) {
   );
 }
 
-// ── App ────────────────────────────────────────────────────────
+// ── App ───────────────────────────────────────────────────────
 function App() {
   const [sesion, setSesion] = useState(null);
   const [verificando, setVerificando] = useState(true);
-  const [pantallaAuth, setPantallaAuth] = useState("login"); // 'login' | 'forgot'
+  const [pantallaAuth, setPantallaAuth] = useState("login");
+  const [sesionExpirada, setSesionExpirada] = useState(false);
 
   useEffect(() => {
     const token = localStorage.getItem("token");
@@ -217,16 +247,33 @@ function App() {
     setVerificando(false);
   }, []);
 
+  // ── Escuchar evento SESSION_EXPIRED del apolloClient ────────
+  useEffect(() => {
+    const handler = () => {
+      setSesionExpirada(true);
+    };
+    window.addEventListener("SESSION_EXPIRED", handler);
+    return () => window.removeEventListener("SESSION_EXPIRED", handler);
+  }, []);
+
   const handleLogin = ({ token, usuario, empresa, rol }) =>
     setSesion({ token, usuario, empresa, rol });
+
   const handleLogout = () => {
     localStorage.clear();
     setSesion(null);
   };
 
+  const handleSesionExpiradaOk = () => {
+    setSesionExpirada(false);
+    localStorage.clear();
+    setSesion(null);
+    setPantallaAuth("login");
+  };
+
   if (verificando) return null;
 
-  // ── Ruta /reset-password — accesible sin sesión ─────────────
+  // ── Ruta /reset-password ─────────────────────────────────────
   if (window.location.pathname === "/reset-password") {
     return (
       <>
@@ -236,7 +283,7 @@ function App() {
     );
   }
 
-  // ── Sin sesión — login o recuperación ───────────────────────
+  // ── Sin sesión ───────────────────────────────────────────────
   if (!sesion) {
     if (pantallaAuth === "forgot") {
       return (
@@ -257,9 +304,14 @@ function App() {
     );
   }
 
-  // ── Con sesión — aplicación completa ────────────────────────
+  // ── Con sesión ───────────────────────────────────────────────
   return (
     <>
+      {/* Modal sesión expirada — aparece encima de todo */}
+      {sesionExpirada && (
+        <ModalSesionExpirada onEntendido={handleSesionExpiradaOk} />
+      )}
+
       <Navbar
         usuario={sesion.usuario}
         empresa={sesion.empresa}
