@@ -61,13 +61,28 @@ export const camposOrdenProduccion = [
     render: (f) => f.joyero?.nombre ?? "-",
   },
   // ── Estado ──────────────────────────────────────────────────────
+  // ── NUEVO — el ciclo de vida (Pendiente → En proceso → Entregada)
+  // ahora lo mueve el sistema solo, según lo que ya calcula (primer
+  // insumo entregado, cantidadEntregada === cantidadProgramada) — ver
+  // ordenProduccion.resolvers.js (obtenerEstadoOrdenId + las 3
+  // mutations que lo mueven). "Cancelada" pasa a ser una acción
+  // dedicada (botón "🚫 Cancelar orden" en el detalle expandido, con
+  // sus propias validaciones), no una opción más de este select.
+  // Por eso:
+  //  - ocultarEnCreacion: al crear la orden siempre queda en Pendiente
+  //    — no hay nada real que mostrar ni que el usuario deba escoger.
+  //  - readOnly: al editar, se ve el estado actual pero no se puede
+  //    cambiar a mano desde aquí.
+  //  - se quitó `obligatorio: true` — ya no aplica (el campo ni
+  //    siquiera se muestra al crear).
   {
     nombre: "estadoId",
     etiqueta: "Estado",
     tipoForm: "select",
-    obligatorio: true,
     ancho: "130px",
     ordenListado: 4,
+    ocultarEnCreacion: true,
+    readOnly: true,
     relationConfig: {
       query: GET_GRUPOS_POR_CODIGOS,
       dataKey: "gruposPorCodigos",
@@ -82,7 +97,12 @@ export const camposOrdenProduccion = [
           ? "success"
           : n === "Cancelada"
             ? "danger"
-            : n === "En proceso con joyero"
+            : // 🩹 PARCHE: el nombre real del grupo (confirmado por el
+              // usuario vía CSV de catálogos) es "En proceso" (código
+              // PROC) — el texto anterior decía "En proceso con
+              // joyero", que nunca hacía match, así que este badge se
+              // quedaba siempre gris para las órdenes en proceso.
+              n === "En proceso"
               ? "warning"
               : "secondary";
       return <span className={`badge bg-${color}`}>{n}</span>;

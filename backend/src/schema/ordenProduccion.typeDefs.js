@@ -97,7 +97,11 @@ export default /* GraphQL */ `
     descripcion: String
     productoId: Int!
     joyeroId: Int!
-    estadoId: Int!
+    # ── NUEVO — ya no es obligatorio ni lo usa el resolver: el estado
+    # inicial SIEMPRE se fuerza a "Pendiente" en el backend (ver
+    # crearOrdenProduccion). Se deja el campo solo para no romper el
+    # payload que arma buildInput.js — su valor se ignora.
+    estadoId: Int
     cantidadProgramada: Int!
     fechaEnvio: String!
     fechaEstimada: String
@@ -111,7 +115,11 @@ export default /* GraphQL */ `
     descripcion: String
     productoId: Int!
     joyeroId: Int!
-    estadoId: Int!
+    # ── NUEVO — igual que en OrdenProduccionInput: el ciclo de vida del
+    # estado ahora lo maneja el sistema (o cancelarOrdenProduccion), ya
+    # no se acepta desde el formulario genérico de edición. Se ignora
+    # en el resolver aunque venga con un valor.
+    estadoId: Int
     cantidadProgramada: Int!
     cantidadEntregada: Int!
     fechaEnvio: String!
@@ -186,6 +194,15 @@ export default /* GraphQL */ `
       input: OrdenProduccionUpdateInput!
     ): OrdenProduccion!
     eliminarOrdenProduccion(id: Int!): Boolean!
+    # ── NUEVO ─────────────────────────────────────────────────────
+    # Reemplaza el cambio manual de estadoId a "Cancelada" desde el
+    # formulario. Valida que la orden no tenga piezas ya entregadas
+    # (cantidadEntregada = 0) y, si tenía insumos enviados al joyero sin
+    # producir, los devuelve automáticamente al lote de compra (queda
+    # registrado como un movimiento DEVOLUCION más, no se reescribe el
+    # historial). motivo es obligatorio — queda en la nota de la orden
+    # y en la nota de cada devolución automática.
+    cancelarOrdenProduccion(id: Int!, version: Int!, motivo: String!): OrdenProduccion!
     registrarEntregaOrden(input: EntregaOrdenInput!): OrdenProduccion!
     conciliarEntrega(input: ConciliarEntregaInput!): EntregaOrden!
     agregarDetalleOrden(input: DetalleOrdenInput!): DetalleOrdenProduccion!
