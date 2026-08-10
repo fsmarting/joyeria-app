@@ -733,6 +733,15 @@ export default function ModalGenericoAvanzado({
   // -------------------------------------------------------------------
   const renderCampo = (campo) => {
     if (campo.soloListado) return null;
+    // ── NUEVO ─────────────────────────────────────────────────────
+    // Igual que soloListado pero al revés en el tiempo: oculta el campo
+    // SOLO en el formulario de creación (registroParaEditar es null),
+    // y lo muestra normalmente al editar un registro ya existente.
+    // Caso de uso: Producto.precioVenta — no tiene sentido pedirlo al
+    // crear el producto porque todavía no existe el BOM ni el costeo
+    // real; se vuelve relevante recién cuando el producto ya existe y
+    // se puede usar el botón "usar sugerido" del panel de costeo.
+    if (campo.ocultarEnCreacion && !registroParaEditar) return null;
 
     let isReadOnly = false;
     if (typeof campo.readOnly === "function") {

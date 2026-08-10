@@ -14,6 +14,23 @@ export default /* GraphQL */ `
     usu_creacion: String
     version: Int!
   }
+  # ── NUEVO ─────────────────────────────────────────────────────
+  # Historial de movimientos de un insumo dentro de una orden: el
+  # envío inicial (se crea junto con el detalle), envíos adicionales
+  # (al joyero le faltó material) y devoluciones (sobrante que regresa).
+  type MovimientoInsumoOrden {
+    id: Int!
+    detalleOrdenProduccionId: Int!
+    compraInsumoId: Int!
+    tipoMovimiento: String! # INICIAL | ADICIONAL | DEVOLUCION
+    cantidad: Float!
+    valor: Float!
+    fecha: String!
+    nota: String
+    usu_creacion: String
+    version: Int!
+    compraInsumo: CompraInsumo
+  }
   type DetalleOrdenProduccion {
     id: Int!
     ordenProduccionId: Int!
@@ -31,6 +48,15 @@ export default /* GraphQL */ `
     compraInsumo: CompraInsumo
     piedra: Piedra
     merma: Float
+    movimientos: [MovimientoInsumoOrden!]!
+    # ── NUEVO — conciliación teórica (solo lectura, Manual v5 §6.6) ─
+    # Compara lo enviado (neto de devoluciones) contra lo que "debería"
+    # consumirse según BOM del producto × piezas entregadas + %
+    # desperdicio de esa línea. Nulo si la línea ya no tiene una línea
+    # de BOM correspondiente (p. ej. se quitó del producto después).
+    consumoTeorico: Float
+    enviadoNeto: Float
+    diferenciaVsTeorico: Float
   }
   type OrdenProduccion {
     id: Int!
@@ -118,11 +144,16 @@ export default /* GraphQL */ `
     cantidadEnviada: Float!
     valorEnviado: Float!
   }
-  input DetalleDevolucionInput {
-    id: Int!
-    cantidadDevuelta: Float!
-    valorDevuelto: Float!
-    version: Int!
+  # ── NUEVO ─────────────────────────────────────────────────────
+  # Reemplaza a DetalleDevolucionInput / registrarDevolucion. Sirve
+  # tanto para un envío adicional (al joyero le faltó insumo) como
+  # para una devolución (sobrante que el joyero regresa).
+  input MovimientoInsumoInput {
+    detalleOrdenProduccionId: Int!
+    compraInsumoId: Int!
+    tipoMovimiento: String! # ADICIONAL | DEVOLUCION
+    cantidad: Float!
+    nota: String
   }
 
   extend type Query {
@@ -133,6 +164,21 @@ export default /* GraphQL */ `
       direccion: [String]
       busqueda: String
     ): OrdenProduccionConnection!
+    # ── NUEVO ─────────────────────────────────────────────────────
+    # Historial LIVIANO (sin BOM/detalles/entregas) de las últimas
+    # órdenes de producción de un producto, para que el usuario vea
+    # cómo se ha movido el costo unitario en el tiempo (p. ej. por
+    # variación del precio del oro) y tenga ese contexto a la hora de
+    # decidir su precio de venta. No es costeo contable de inventario
+    # (ver Manual v5 §6.x) — cada orden ya trae su propio
+    # costoUnitarioEstandard congelado al momento de crearse; esto
+    # solo las lista en el tiempo.
+    # ⚠️ El resolver de este query NO incluye producto/detalles/entregas
+    # (a propósito, para que sea liviano) — el query del frontend NO
+    # debe pedir esos campos o revienta el mismo error de campo
+    # no-nulo que tuvimos con Producto.piedras (ver comentario en
+    # incluirOrden más abajo en el resolver).
+    historicoCostoOrdenes(productoId: Int!, limit: Int): [OrdenProduccion!]!
   }
   extend type Mutation {
     crearOrdenProduccion(input: OrdenProduccionInput!): OrdenProduccion
@@ -143,7 +189,9 @@ export default /* GraphQL */ `
     registrarEntregaOrden(input: EntregaOrdenInput!): OrdenProduccion!
     conciliarEntrega(input: ConciliarEntregaInput!): EntregaOrden!
     agregarDetalleOrden(input: DetalleOrdenInput!): DetalleOrdenProduccion!
-    registrarDevolucion(input: DetalleDevolucionInput!): DetalleOrdenProduccion!
+    registrarMovimientoInsumo(
+      input: MovimientoInsumoInput!
+    ): DetalleOrdenProduccion!
     eliminarDetalleOrden(id: Int!): Boolean!
   }
 `;

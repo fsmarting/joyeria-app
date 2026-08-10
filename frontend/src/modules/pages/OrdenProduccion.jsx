@@ -1,79 +1,370 @@
-import { useMemo, useState } from 'react';
-import { useQuery, useMutation } from '@apollo/client';
-import { toast } from 'react-toastify';
-import EntidadGenerica from '../../components/EntidadGenerica.jsx';
-import { camposOrdenProduccion } from '../../data/camposOrdenProduccion.jsx';
+import { useMemo, useState } from "react";
+import { useQuery, useMutation } from "@apollo/client";
+import { toast } from "react-toastify";
+import EntidadGenerica from "../../components/EntidadGenerica.jsx";
+import { camposOrdenProduccion } from "../../data/camposOrdenProduccion.jsx";
 import {
-  GET_ORDENES_CURSOR, CREAR_ORDEN, ACTUALIZAR_ORDEN, ELIMINAR_ORDEN,
-  REGISTRAR_ENTREGA, CONCILIAR_ENTREGA,
-  AGREGAR_DETALLE, REGISTRAR_DEVOLUCION, ELIMINAR_DETALLE,
-} from '../../graphql/ordenProduccionQueries.js';
-import { GET_COMPRAS_POR_PIEDRA } from '../../graphql/compraInsumoQueries.js';
-import { GET_PIEDRAS_CURSOR }     from '../../graphql/piedraQueries.js';
+  GET_ORDENES_CURSOR,
+  CREAR_ORDEN,
+  ACTUALIZAR_ORDEN,
+  ELIMINAR_ORDEN,
+  REGISTRAR_ENTREGA,
+  CONCILIAR_ENTREGA,
+  AGREGAR_DETALLE,
+  REGISTRAR_MOVIMIENTO_INSUMO,
+  ELIMINAR_DETALLE,
+} from "../../graphql/ordenProduccionQueries.js";
+import { GET_COMPRAS_POR_PIEDRA } from "../../graphql/compraInsumoQueries.js";
 
-const fmt  = (n) => n != null ? `$${Number(n).toLocaleString('es-CO',{minimumFractionDigits:0})}` : '-';
-const fmtQ = (n, u='') => n != null ? `${Number(n).toLocaleString('es-CO',{maximumFractionDigits:4})} ${u}`.trim() : '-';
-const fmtF = (s) => s ? new Date(s).toLocaleDateString('es-CO') : '-';
+const fmt = (n) =>
+  n != null
+    ? `$${Number(n).toLocaleString("es-CO", { minimumFractionDigits: 0 })}`
+    : "-";
+const fmtQ = (n, u = "") =>
+  n != null
+    ? `${Number(n).toLocaleString("es-CO", { maximumFractionDigits: 4 })} ${u}`.trim()
+    : "-";
+const fmtF = (s) => (s ? new Date(s).toLocaleDateString("es-CO") : "-");
 
 const BADGE_CONCILIACION = {
-  PENDIENTE:   'bg-secondary',
-  CONCILIADO:  'bg-success',
-  DISPUTA:     'bg-danger',
+  PENDIENTE: "bg-secondary",
+  CONCILIADO: "bg-success",
+  DISPUTA: "bg-danger",
 };
 
-// ── Fila de detalle ───────────────────────────────────────────────
-function DetalleRow({ d, onDevolver, onEliminar }) {
-  const [cantDev, setCantDev] = useState('');
-  const u = d.piedra?.unidad?.nombre || '';
+const BADGE_MOVIMIENTO = {
+  INICIAL: "bg-secondary",
+  ADICIONAL: "bg-warning text-dark",
+  DEVOLUCION: "bg-success",
+};
+const LABEL_MOVIMIENTO = {
+  INICIAL: "Envío inicial",
+  ADICIONAL: "Envío adicional",
+  DEVOLUCION: "Devolución",
+};
+
+// ── Conciliación teórica — ver Manual v5 §6.6 ─────────────────────
+// Compara lo enviado (neto de devoluciones) contra lo que "debería"
+// consumirse según BOM × piezas entregadas + % desperdicio de esa
+// línea. Es solo informativo — no bloquea nada.
+function badgeConciliacion(diferencia, consumoTeorico) {
+  if (diferencia == null) return null;
+  const tolerancia = Math.max(0.01, Math.abs(consumoTeorico || 0) * 0.02);
+  if (diferencia > tolerancia)
+    return { cls: "bg-warning text-dark", label: "Pendiente por devolver" };
+  if (diferencia < -tolerancia)
+    return { cls: "bg-danger", label: "Desperdicio > esperado" };
+  return { cls: "bg-success", label: "OK" };
+}
+
+// ── Historial de movimientos de una línea de detalle ──────────────
+function MovimientosHistorial({ movimientos }) {
+  if (!movimientos?.length)
+    return (
+      <div className="text-muted" style={{ fontSize: 11 }}>
+        Sin movimientos aún.
+      </div>
+    );
   return (
-    <tr>
-      <td><strong>{d.piedra?.codigo}</strong> {d.piedra?.nombre}</td>
-      <td style={{fontSize:11}}>{d.compraInsumo?.numero} · {fmtF(d.compraInsumo?.fecha)}</td>
-      <td>{fmtQ(d.cantidad,u)}</td>
-      <td>{fmt(d.costoUnitario)}</td>
-      <td>{fmt(d.costoTotal)}</td>
-      <td>{fmtQ(d.cantidadEnviada,u)}</td>
-      <td>{Number(d.cantidadDevuelta)>0?<span className="badge bg-success">{fmtQ(d.cantidadDevuelta,u)}</span>:<span className="text-muted">—</span>}</td>
-      <td>{Number(d.merma)>0?<span className="badge bg-warning text-dark">{fmtQ(d.merma,u)}</span>:<span className="text-muted">—</span>}</td>
-      <td>
-        <div className="d-flex gap-1">
-          {Number(d.cantidadDevuelta)===0 && <>
-            <input type="number" className="form-control form-control-sm py-0" style={{width:65,fontSize:11}} placeholder="Dev." value={cantDev} onChange={e=>setCantDev(e.target.value)}/>
-            <button className="btn btn-sm btn-outline-success py-0 px-1" style={{fontSize:11}} onClick={()=>onDevolver(d,cantDev)}>✓</button>
-          </>}
-          <button className="btn btn-sm btn-outline-danger py-0 px-1" style={{fontSize:11}} onClick={()=>onEliminar(d.id)}>✕</button>
+    <table className="table table-sm mb-0" style={{ fontSize: 11 }}>
+      <thead>
+        <tr>
+          <th>Tipo</th>
+          <th>Lote</th>
+          <th>Cantidad</th>
+          <th>Valor</th>
+          <th>Fecha</th>
+          <th>Nota</th>
+        </tr>
+      </thead>
+      <tbody>
+        {movimientos.map((m) => (
+          <tr key={m.id}>
+            <td>
+              <span
+                className={`badge ${BADGE_MOVIMIENTO[m.tipoMovimiento] || "bg-secondary"}`}
+              >
+                {LABEL_MOVIMIENTO[m.tipoMovimiento] || m.tipoMovimiento}
+              </span>
+            </td>
+            <td>{m.compraInsumo?.numero || "—"}</td>
+            <td>{fmtQ(m.cantidad)}</td>
+            <td>{fmt(m.valor)}</td>
+            <td>{fmtF(m.fecha)}</td>
+            <td className="text-muted">{m.nota || "—"}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
+// ── Formulario inline para registrar un movimiento (adicional o devolución) ──
+function MovimientoForm({ detalle, onRegistrar, onCancelar }) {
+  const [tipo, setTipo] = useState("ADICIONAL");
+  const [compraSelId, setCompra] = useState(String(detalle.compraInsumoId));
+  const [cantidad, setCantidad] = useState("");
+  const [nota, setNota] = useState("");
+
+  const { data } = useQuery(GET_COMPRAS_POR_PIEDRA, {
+    variables: { piedraId: detalle.piedraId },
+    fetchPolicy: "network-only",
+  });
+  const lotes = data?.comprasPorPiedra || [];
+  const unidad = detalle.piedra?.unidad?.nombre || "";
+
+  const maxDevolucion =
+    Number(detalle.cantidadEnviada) - Number(detalle.cantidadDevuelta);
+
+  const confirmar = async () => {
+    if (!compraSelId || !cantidad || Number(cantidad) <= 0)
+      return toast.warning("Complete lote y cantidad");
+    if (!nota.trim())
+      return toast.warning("La nota es obligatoria — explique el motivo");
+    if (tipo === "DEVOLUCION" && Number(cantidad) > maxDevolucion)
+      return toast.error(`Máximo a devolver: ${fmtQ(maxDevolucion, unidad)}`);
+    await onRegistrar({
+      detalleOrdenProduccionId: detalle.id,
+      compraInsumoId: Number(compraSelId),
+      tipoMovimiento: tipo,
+      cantidad: Number(cantidad),
+      nota: nota.trim(),
+    });
+    setCantidad("");
+    setNota("");
+  };
+
+  return (
+    <div className="border rounded p-2 bg-white mt-1" style={{ fontSize: 11 }}>
+      <div className="d-flex flex-wrap gap-2 align-items-end">
+        <div>
+          <label className="form-label mb-0">Tipo</label>
+          <select
+            className="form-select form-select-sm"
+            style={{ width: 140 }}
+            value={tipo}
+            onChange={(e) => setTipo(e.target.value)}
+          >
+            <option value="ADICIONAL">Envío adicional</option>
+            <option value="DEVOLUCION">Devolución</option>
+          </select>
         </div>
-      </td>
-    </tr>
+        <div>
+          <label className="form-label mb-0">Lote</label>
+          <select
+            className="form-select form-select-sm"
+            style={{ width: 200 }}
+            value={compraSelId}
+            onChange={(e) => setCompra(e.target.value)}
+          >
+            <option value={String(detalle.compraInsumoId)}>
+              {detalle.compraInsumo?.numero} (lote inicial)
+            </option>
+            {lotes
+              .filter((l) => String(l.id) !== String(detalle.compraInsumoId))
+              .map((l) => (
+                <option key={l.id} value={l.id}>
+                  {l.numero} · Disp: {fmtQ(l.cantidadDisponible, unidad)}
+                </option>
+              ))}
+          </select>
+        </div>
+        <div>
+          <label className="form-label mb-0">
+            Cantidad{" "}
+            {tipo === "DEVOLUCION" && `(máx ${fmtQ(maxDevolucion, unidad)})`}
+          </label>
+          <input
+            type="number"
+            className="form-control form-control-sm"
+            style={{ width: 100 }}
+            value={cantidad}
+            onChange={(e) => setCantidad(e.target.value)}
+          />
+        </div>
+        <div style={{ flex: 1, minWidth: 180 }}>
+          <label className="form-label mb-0">Nota (obligatoria)</label>
+          <input
+            type="text"
+            className="form-control form-control-sm"
+            placeholder="Ej: piedra rota al engastar"
+            maxLength={300}
+            value={nota}
+            onChange={(e) => setNota(e.target.value)}
+          />
+        </div>
+        <button className="btn btn-primary btn-sm" onClick={confirmar}>
+          Registrar
+        </button>
+        <button
+          className="btn btn-outline-secondary btn-sm"
+          onClick={onCancelar}
+        >
+          Cancelar
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ── Fila de un insumo ya enviado (detalle) ─────────────────────────
+function DetalleRow({ d, ordenCompleta, onRegistrarMovimiento, onEliminar }) {
+  const [mostrarForm, setMostrarForm] = useState(false);
+  const [mostrarHist, setMostrarHist] = useState(false);
+  const u = d.piedra?.unidad?.nombre || "";
+  const esOro = d.piedra?.tipo?.codigo === "ORO";
+  const badge = badgeConciliacion(d.diferenciaVsTeorico, d.consumoTeorico);
+
+  return (
+    <>
+      <tr>
+        <td>
+          <strong>{d.piedra?.codigo}</strong> {d.piedra?.nombre}
+          {esOro && (
+            <span
+              className="badge bg-warning text-dark ms-1"
+              style={{ fontSize: 9 }}
+            >
+              🥇
+            </span>
+          )}
+        </td>
+        <td style={{ fontSize: 11 }}>
+          {d.compraInsumo?.numero} · {fmtF(d.compraInsumo?.fecha)}
+        </td>
+        <td>{fmtQ(d.cantidad, u)}</td>
+        <td>{fmt(d.costoUnitario)}</td>
+        <td>{fmt(d.costoTotal)}</td>
+        <td>{fmtQ(d.cantidadEnviada, u)}</td>
+        <td>
+          {Number(d.cantidadDevuelta) > 0 ? (
+            <span className="badge bg-success">
+              {fmtQ(d.cantidadDevuelta, u)}
+            </span>
+          ) : (
+            <span className="text-muted">—</span>
+          )}
+        </td>
+        <td>
+          {Number(d.merma) > 0 ? (
+            <span className="badge bg-warning text-dark">
+              {fmtQ(d.merma, u)}
+            </span>
+          ) : (
+            <span className="text-muted">—</span>
+          )}
+        </td>
+        <td>
+          {badge ? (
+            <span
+              className={`badge ${badge.cls}`}
+              title={`Teórico: ${fmtQ(d.consumoTeorico, u)} · Enviado neto: ${fmtQ(d.enviadoNeto, u)} · Diferencia: ${fmtQ(d.diferenciaVsTeorico, u)}${ordenCompleta ? "" : " (preliminar — orden aún no entregada al 100%)"}`}
+            >
+              {badge.label}
+              {!ordenCompleta && " *"}
+            </span>
+          ) : (
+            <span className="text-muted">—</span>
+          )}
+        </td>
+        <td>
+          <div className="d-flex gap-1">
+            <button
+              className="btn btn-sm btn-outline-primary py-0 px-1"
+              style={{ fontSize: 11 }}
+              onClick={() => setMostrarForm((v) => !v)}
+            >
+              + Mov.
+            </button>
+            <button
+              className="btn btn-sm btn-outline-secondary py-0 px-1"
+              style={{ fontSize: 11 }}
+              onClick={() => setMostrarHist((v) => !v)}
+            >
+              {mostrarHist ? "▲" : "▼"} ({d.movimientos?.length || 0})
+            </button>
+            <button
+              className="btn btn-sm btn-outline-danger py-0 px-1"
+              style={{ fontSize: 11 }}
+              onClick={() => onEliminar(d.id)}
+            >
+              ✕
+            </button>
+          </div>
+        </td>
+      </tr>
+      {mostrarForm && (
+        <tr>
+          <td colSpan={10}>
+            <MovimientoForm
+              detalle={d}
+              onRegistrar={async (input) => {
+                await onRegistrarMovimiento(input);
+                setMostrarForm(false);
+              }}
+              onCancelar={() => setMostrarForm(false)}
+            />
+          </td>
+        </tr>
+      )}
+      {mostrarHist && (
+        <tr className="bg-light">
+          <td colSpan={10} className="py-2 px-3">
+            <MovimientosHistorial movimientos={d.movimientos} />
+          </td>
+        </tr>
+      )}
+    </>
   );
 }
 
 // ── Fila de historial de entregas con conciliación ────────────────
 function EntregaRow({ e, onConciliar }) {
   const [expandido, setExpandido] = useState(false);
-  const [estado, setEstado]       = useState(e.estadoConciliacion);
-  const [nota,   setNota]         = useState(e.notaConciliacion || '');
-  const badge = BADGE_CONCILIACION[e.estadoConciliacion] || 'bg-secondary';
-  const hayDiferencia = e.cantidadJoyero !== null && e.cantidadJoyero !== undefined && e.cantidadJoyero !== e.cantidad;
+  const [estado, setEstado] = useState(e.estadoConciliacion);
+  const [nota, setNota] = useState(e.notaConciliacion || "");
+  const badge = BADGE_CONCILIACION[e.estadoConciliacion] || "bg-secondary";
+  const hayDiferencia =
+    e.cantidadJoyero !== null &&
+    e.cantidadJoyero !== undefined &&
+    e.cantidadJoyero !== e.cantidad;
 
   return (
     <>
       <tr>
-        <td><strong style={{fontFamily:'monospace'}}>{e.numeroRemision}</strong></td>
-        <td className="text-muted" style={{fontSize:11}}>{e.numeroJoyero || '—'}</td>
-        <td>{fmtF(e.fecha)}</td>
-        <td><span className="badge bg-success">{e.cantidad} piezas</span></td>
         <td>
-          {hayDiferencia
-            ? <span className="badge bg-warning text-dark">{e.cantidadJoyero} piezas ⚠</span>
-            : <span className="text-muted">—</span>}
+          <strong style={{ fontFamily: "monospace" }}>
+            {e.numeroRemision}
+          </strong>
+        </td>
+        <td className="text-muted" style={{ fontSize: 11 }}>
+          {e.numeroJoyero || "—"}
+        </td>
+        <td>{fmtF(e.fecha)}</td>
+        <td>
+          <span className="badge bg-success">{e.cantidad} piezas</span>
+        </td>
+        <td>
+          {hayDiferencia ? (
+            <span className="badge bg-warning text-dark">
+              {e.cantidadJoyero} piezas ⚠
+            </span>
+          ) : (
+            <span className="text-muted">—</span>
+          )}
         </td>
         <td>{fmt(e.valorEntregado)}</td>
-        <td><span className={`badge ${badge}`}>{e.estadoConciliacion}</span></td>
         <td>
-          {e.estadoConciliacion !== 'CONCILIADO' && (
-            <button className="btn btn-sm btn-outline-secondary py-0 px-1" style={{fontSize:11}} onClick={()=>setExpandido(!expandido)}>
-              {expandido ? '▲' : '▼'} Conciliar
+          <span className={`badge ${badge}`}>{e.estadoConciliacion}</span>
+        </td>
+        <td>
+          {e.estadoConciliacion !== "CONCILIADO" && (
+            <button
+              className="btn btn-sm btn-outline-secondary py-0 px-1"
+              style={{ fontSize: 11 }}
+              onClick={() => setExpandido(!expandido)}
+            >
+              {expandido ? "▲" : "▼"} Conciliar
             </button>
           )}
         </td>
@@ -83,21 +374,41 @@ function EntregaRow({ e, onConciliar }) {
           <td colSpan={8} className="py-2 px-3">
             <div className="d-flex gap-2 align-items-end flex-wrap">
               <div>
-                <label className="form-label mb-0" style={{fontSize:12}}>Estado</label>
-                <select className="form-select form-select-sm" style={{width:140}} value={estado} onChange={e=>setEstado(e.target.value)}>
+                <label className="form-label mb-0" style={{ fontSize: 12 }}>
+                  Estado
+                </label>
+                <select
+                  className="form-select form-select-sm"
+                  style={{ width: 140 }}
+                  value={estado}
+                  onChange={(e) => setEstado(e.target.value)}
+                >
                   <option value="PENDIENTE">Pendiente</option>
                   <option value="CONCILIADO">Conciliado ✓</option>
                   <option value="DISPUTA">Disputa ⚠</option>
                 </select>
               </div>
-              <div style={{flex:1}}>
-                <label className="form-label mb-0" style={{fontSize:12}}>Nota de conciliación</label>
-                <input type="text" className="form-control form-control-sm" maxLength={500}
+              <div style={{ flex: 1 }}>
+                <label className="form-label mb-0" style={{ fontSize: 12 }}>
+                  Nota de conciliación
+                </label>
+                <input
+                  type="text"
+                  className="form-control form-control-sm"
+                  maxLength={500}
                   placeholder="Ej: Joyero acepta 4 piezas, la 5ta quedó sin terminar"
-                  value={nota} onChange={ev=>setNota(ev.target.value)}/>
+                  value={nota}
+                  onChange={(ev) => setNota(ev.target.value)}
+                />
               </div>
-              <button className="btn btn-success btn-sm"
-                onClick={()=>onConciliar(e.id, estado, nota, e.version).then(()=>setExpandido(false))}>
+              <button
+                className="btn btn-success btn-sm"
+                onClick={() =>
+                  onConciliar(e.id, estado, nota, e.version).then(() =>
+                    setExpandido(false),
+                  )
+                }
+              >
                 Guardar conciliación
               </button>
             </div>
@@ -108,147 +419,371 @@ function EntregaRow({ e, onConciliar }) {
   );
 }
 
+// ── Fila de sugerencia — insumo del BOM que aún no se ha enviado ──
+function SugerenciaRow({ bom, cantidadProgramada, onConfirmar }) {
+  const [compraSelId, setCompra] = useState("");
+  const [incluirDesp, setIncluirDesp] = useState(false);
+  const [cantOverride, setCantOverride] = useState(null); // null = usar el cálculo automático
+
+  const { data } = useQuery(GET_COMPRAS_POR_PIEDRA, {
+    variables: { piedraId: bom.piedraId },
+    fetchPolicy: "network-only",
+  });
+  const lotes = data?.comprasPorPiedra || [];
+  const compraActual = lotes.find((c) => String(c.id) === String(compraSelId));
+  const unidad = bom.piedra?.unidad?.nombre || "";
+  const esOro = bom.piedra?.tipo?.codigo === "ORO";
+
+  const cantidadNecesaria = Number(bom.cantidad) * Number(cantidadProgramada);
+  const desperdicioSugerido =
+    cantidadNecesaria * (Number(bom.desperdicio || 0) / 100);
+  const cantidadCalculada = incluirDesp
+    ? cantidadNecesaria + desperdicioSugerido
+    : cantidadNecesaria;
+  const cantidadAEnviar =
+    cantOverride !== null ? Number(cantOverride) : cantidadCalculada;
+
+  const costoUnitario = compraActual ? Number(compraActual.costoUnitario) : 0;
+  const costoTotal =
+    Number(bom.cantidad) * costoUnitario * Number(cantidadProgramada);
+  const valorEnviado = cantidadAEnviar * costoUnitario;
+
+  const confirmar = () => {
+    if (!compraSelId) return toast.warning("Seleccione el lote de compra");
+    if (
+      compraActual &&
+      cantidadAEnviar > Number(compraActual.cantidadDisponible)
+    )
+      return toast.error(
+        `Stock insuficiente en ese lote. Disponible: ${compraActual.cantidadDisponible}`,
+      );
+    onConfirmar({
+      piedraId: bom.piedraId,
+      compraInsumoId: Number(compraSelId),
+      cantidad: Number(bom.cantidad),
+      costoUnitario,
+      costoTotal,
+      desperdicio: Number(bom.desperdicio || 0),
+      cantidadEnviada: cantidadAEnviar,
+      valorEnviado,
+    });
+  };
+
+  return (
+    <tr>
+      <td>
+        <strong>{bom.piedra?.codigo}</strong> {bom.piedra?.nombre}
+        {esOro && (
+          <span
+            className="badge bg-warning text-dark ms-1"
+            style={{ fontSize: 9 }}
+          >
+            🥇
+          </span>
+        )}
+        <div className="text-muted" style={{ fontSize: 10 }}>
+          {bom.tipoPiedra?.nombre}
+        </div>
+      </td>
+      <td>{fmtQ(cantidadNecesaria, unidad)}</td>
+      <td>
+        {Number(bom.desperdicio || 0) > 0 ? (
+          <label
+            className="d-flex align-items-center gap-1"
+            style={{ fontSize: 11 }}
+          >
+            <input
+              type="checkbox"
+              checked={incluirDesp}
+              onChange={(e) => {
+                setIncluirDesp(e.target.checked);
+                setCantOverride(null);
+              }}
+            />
+            +{fmtQ(desperdicioSugerido, unidad)} ({bom.desperdicio}%)
+          </label>
+        ) : (
+          <span className="text-muted">—</span>
+        )}
+      </td>
+      <td>
+        <select
+          className="form-select form-select-sm"
+          style={{ width: 190 }}
+          value={compraSelId}
+          onChange={(e) => setCompra(e.target.value)}
+        >
+          <option value="">Seleccione lote...</option>
+          {lotes.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.numero} · {fmt(c.costoUnitario)}/{unidad} · Disp:{" "}
+              {fmtQ(c.cantidadDisponible, unidad)}
+            </option>
+          ))}
+          {lotes.length === 0 && <option disabled>Sin stock</option>}
+        </select>
+      </td>
+      <td>
+        <input
+          type="number"
+          className="form-control form-control-sm"
+          style={{ width: 90 }}
+          value={
+            cantOverride !== null ? cantOverride : cantidadAEnviar.toFixed(4)
+          }
+          onChange={(e) => setCantOverride(e.target.value)}
+        />
+      </td>
+      <td className="text-muted" style={{ fontSize: 11 }}>
+        {fmt(valorEnviado)}
+      </td>
+      <td>
+        <button className="btn btn-primary btn-sm" onClick={confirmar}>
+          Confirmar envío
+        </button>
+      </td>
+    </tr>
+  );
+}
+
 // ── Panel principal ───────────────────────────────────────────────
 function DetallesPanel({ orden, refetch }) {
-  const [cantEntrega,  setCantEntrega]  = useState('');
-  const [cantJoyero,   setCantJoyero]   = useState('');
-  const [numJoyero,    setNumJoyero]    = useState('');
-  const [notaEntrega,  setNotaEntrega]  = useState('');
-  const [piedraSelId,  setPiedraSelId]  = useState('');
-  const [compraSelId,  setCompraSelId]  = useState('');
-  const [cantidad,     setCantidad]     = useState('');
-  const [desperdicio,  setDesperdicio]  = useState('0');
-
-  const { data: dataPiedras } = useQuery(GET_PIEDRAS_CURSOR, { variables: { first:100 }, fetchPolicy:'network-only' });
-  const piedras = (dataPiedras?.piedrasFiltradosCursor?.edges||[]).map(e=>e.node);
-
-  const { data: dataCompras } = useQuery(GET_COMPRAS_POR_PIEDRA, { variables:{ piedraId:Number(piedraSelId) }, skip:!piedraSelId, fetchPolicy:'network-only' });
-  const comprasDisponibles = dataCompras?.comprasPorPiedra || [];
-  const compraActual = comprasDisponibles.find(c=>String(c.id)===String(compraSelId));
-  const piedraActual = piedras.find(p=>String(p.id)===String(piedraSelId));
-
-  const cantidadEnviada = cantidad && orden.cantidadProgramada ? Number(cantidad)*Number(orden.cantidadProgramada) : 0;
-  const costoUnitario   = compraActual ? Number(compraActual.costoUnitario) : 0;
-  const costoTotal      = Number(cantidad)*costoUnitario*Number(orden.cantidadProgramada);
-  const valorEnviado    = cantidadEnviada*costoUnitario;
+  const [cantEntrega, setCantEntrega] = useState("");
+  const [cantJoyero, setCantJoyero] = useState("");
+  const [numJoyero, setNumJoyero] = useState("");
+  const [notaEntrega, setNotaEntrega] = useState("");
 
   const [registrarEntrega] = useMutation(REGISTRAR_ENTREGA);
-  const [conciliar]        = useMutation(CONCILIAR_ENTREGA);
-  const [agregar]          = useMutation(AGREGAR_DETALLE);
-  const [devolver]         = useMutation(REGISTRAR_DEVOLUCION);
-  const [eliminar]         = useMutation(ELIMINAR_DETALLE);
+  const [conciliar] = useMutation(CONCILIAR_ENTREGA);
+  const [agregar] = useMutation(AGREGAR_DETALLE);
+  const [registrarMovimiento] = useMutation(REGISTRAR_MOVIMIENTO_INSUMO);
+  const [eliminar] = useMutation(ELIMINAR_DETALLE);
 
-  const pendientes = Number(orden.cantidadProgramada) - Number(orden.cantidadEntregada);
-  const entregas   = orden.entregas || [];
-  const enDisputa  = entregas.filter(e=>e.estadoConciliacion==='DISPUTA').length;
+  const pendientes =
+    Number(orden.cantidadProgramada) - Number(orden.cantidadEntregada);
+  const entregas = orden.entregas || [];
+  const enDisputa = entregas.filter(
+    (e) => e.estadoConciliacion === "DISPUTA",
+  ).length;
+
+  // Insumos del BOM del producto que todavía no tienen fila en el detalle de esta orden
+  const bomDelProducto = orden.producto?.piedras || [];
+  const piedraIdsEnDetalle = new Set(
+    (orden.detalles || []).map((d) => d.piedraId),
+  );
+  const sugerencias = bomDelProducto.filter(
+    (b) => !piedraIdsEnDetalle.has(b.piedraId),
+  );
 
   const handleEntrega = async () => {
-    if (!cantEntrega || Number(cantEntrega)<=0) return toast.warning('Ingrese la cantidad recibida');
-    if (Number(cantEntrega)>pendientes) return toast.error(`Máximo ${pendientes} piezas pendientes`);
+    if (!cantEntrega || Number(cantEntrega) <= 0)
+      return toast.warning("Ingrese la cantidad recibida");
+    if (Number(cantEntrega) > pendientes)
+      return toast.error(`Máximo ${pendientes} piezas pendientes`);
     try {
-      await registrarEntrega({ variables: { input: {
-        ordenProduccionId: orden.id,
-        cantidad:          Number(cantEntrega),
-        cantidadJoyero:    cantJoyero ? Number(cantJoyero) : null,
-        numeroJoyero:      numJoyero  || null,
-        nota:              notaEntrega || null,
-      }}});
+      await registrarEntrega({
+        variables: {
+          input: {
+            ordenProduccionId: orden.id,
+            cantidad: Number(cantEntrega),
+            cantidadJoyero: cantJoyero ? Number(cantJoyero) : null,
+            numeroJoyero: numJoyero || null,
+            nota: notaEntrega || null,
+          },
+        },
+      });
       const hayDif = cantJoyero && Number(cantJoyero) !== Number(cantEntrega);
-      toast[hayDif?'warning':'success'](hayDif ? `⚠ Entrega en DISPUTA — Río Rayo: ${cantEntrega}, Joyero: ${cantJoyero}` : `Entrega registrada — Remisión generada`);
-      setCantEntrega(''); setCantJoyero(''); setNumJoyero(''); setNotaEntrega('');
+      toast[hayDif ? "warning" : "success"](
+        hayDif
+          ? `⚠ Entrega en DISPUTA — Río Rayo: ${cantEntrega}, Joyero: ${cantJoyero}`
+          : `Entrega registrada — Remisión generada`,
+      );
+      setCantEntrega("");
+      setCantJoyero("");
+      setNumJoyero("");
+      setNotaEntrega("");
       await refetch();
-    } catch(e) { toast.error(e.message); }
+    } catch (e) {
+      toast.error(e.message);
+    }
   };
 
   const handleConciliar = async (id, estado, nota, version) => {
     try {
-      await conciliar({ variables: { input: { id, estadoConciliacion: estado, notaConciliacion: nota||null, version } } });
-      toast.success('Conciliación guardada');
+      await conciliar({
+        variables: {
+          input: {
+            id,
+            estadoConciliacion: estado,
+            notaConciliacion: nota || null,
+            version,
+          },
+        },
+      });
+      toast.success("Conciliación guardada");
       await refetch();
-    } catch(e) { toast.error(e.message); }
+    } catch (e) {
+      toast.error(e.message);
+    }
   };
 
-  const handleAgregar = async () => {
-    if (!piedraSelId||!compraSelId||!cantidad) return toast.warning('Complete insumo, compra y cantidad');
-    if (cantidadEnviada>Number(compraActual?.cantidadDisponible)) return toast.error(`Stock insuficiente`);
+  const handleConfirmarSugerencia = async (input) => {
     try {
-      await agregar({ variables:{ input:{ ordenProduccionId:orden.id, compraInsumoId:Number(compraSelId), piedraId:Number(piedraSelId), cantidad:Number(cantidad), costoUnitario, costoTotal, desperdicio:Number(desperdicio), cantidadEnviada, valorEnviado }}});
-      toast.success('Insumo agregado'); setPiedraSelId(''); setCompraSelId(''); setCantidad(''); setDesperdicio('0');
+      await agregar({
+        variables: { input: { ordenProduccionId: orden.id, ...input } },
+      });
+      toast.success("Insumo enviado — movimiento inicial registrado");
       await refetch();
-    } catch(e) { toast.error(e.message); }
+    } catch (e) {
+      toast.error(e.message);
+    }
   };
 
-  const handleDevolucion = async (d, cantDev) => {
-    if (!cantDev||Number(cantDev)<=0) return;
-    try { await devolver({ variables:{ input:{ id:d.id, cantidadDevuelta:Number(cantDev), valorDevuelto:Number(cantDev)*d.costoUnitario, version:d.version }}}); toast.success('Devolución registrada'); await refetch(); }
-    catch(e) { toast.error(e.message); }
+  const handleRegistrarMovimiento = async (input) => {
+    try {
+      await registrarMovimiento({ variables: { input } });
+      toast.success(
+        input.tipoMovimiento === "DEVOLUCION"
+          ? "Devolución registrada"
+          : "Envío adicional registrado",
+      );
+      await refetch();
+    } catch (e) {
+      toast.error(e.message);
+    }
   };
 
   const handleEliminar = async (id) => {
-    if (!window.confirm('¿Quitar este insumo? Se restaurará el stock.')) return;
-    try { await eliminar({ variables:{ id }}); toast.success('Insumo removido'); await refetch(); }
-    catch(e) { toast.error(e.message); }
+    if (
+      !window.confirm(
+        "¿Quitar este insumo? Se revertirán todos sus movimientos y se restaurará el stock.",
+      )
+    )
+      return;
+    try {
+      await eliminar({ variables: { id } });
+      toast.success("Insumo removido");
+      await refetch();
+    } catch (e) {
+      toast.error(e.message);
+    }
   };
 
   return (
     <div className="p-3 bg-light border-top">
       {/* Resumen */}
       <div className="d-flex align-items-center gap-3 mb-3 flex-wrap">
-        <strong style={{fontSize:13}}>{orden.numero} · {orden.producto?.nombre}</strong>
+        <strong style={{ fontSize: 13 }}>
+          {orden.numero} · {orden.producto?.nombre}
+        </strong>
         <span className="text-muted small">
-          Programadas: <strong>{orden.cantidadProgramada}</strong> ·
-          Recibidas: <strong className={pendientes===0?'text-success':'text-warning'}>{orden.cantidadEntregada}</strong> ·
-          Pendientes: <strong className={pendientes>0?'text-danger':'text-success'}>{pendientes}</strong>
-          {enDisputa>0 && <span className="badge bg-danger ms-2">⚠ {enDisputa} en disputa</span>}
+          Programadas: <strong>{orden.cantidadProgramada}</strong> · Recibidas:{" "}
+          <strong
+            className={pendientes === 0 ? "text-success" : "text-warning"}
+          >
+            {orden.cantidadEntregada}
+          </strong>{" "}
+          · Pendientes:{" "}
+          <strong className={pendientes > 0 ? "text-danger" : "text-success"}>
+            {pendientes}
+          </strong>
+          {enDisputa > 0 && (
+            <span className="badge bg-danger ms-2">
+              ⚠ {enDisputa} en disputa
+            </span>
+          )}
         </span>
       </div>
 
       {/* ── Registrar entrega ── */}
-      {pendientes>0 && (
+      {pendientes > 0 && (
         <div className="border rounded p-2 bg-white mb-3">
-          <div className="fw-bold mb-2" style={{fontSize:13}}>📦 Registrar entrega del joyero</div>
+          <div className="fw-bold mb-2" style={{ fontSize: 13 }}>
+            📦 Registrar entrega del joyero
+          </div>
           <div className="d-flex flex-wrap gap-2 align-items-end">
             <div>
-              <label className="form-label mb-0" style={{fontSize:12}}>Piezas recibidas por Río Rayo</label>
-              <input type="number" className="form-control form-control-sm" style={{width:150}}
-                min="1" max={pendientes} placeholder={`Máx: ${pendientes}`}
-                value={cantEntrega} onChange={e=>setCantEntrega(e.target.value)}/>
+              <label className="form-label mb-0" style={{ fontSize: 12 }}>
+                Piezas recibidas por Río Rayo
+              </label>
+              <input
+                type="number"
+                className="form-control form-control-sm"
+                style={{ width: 150 }}
+                min="1"
+                max={pendientes}
+                placeholder={`Máx: ${pendientes}`}
+                value={cantEntrega}
+                onChange={(e) => setCantEntrega(e.target.value)}
+              />
             </div>
             <div>
-              <label className="form-label mb-0" style={{fontSize:12}}>Piezas según joyero (si difiere)</label>
-              <input type="number" className="form-control form-control-sm" style={{width:150}}
+              <label className="form-label mb-0" style={{ fontSize: 12 }}>
+                Piezas según joyero (si difiere)
+              </label>
+              <input
+                type="number"
+                className="form-control form-control-sm"
+                style={{ width: 150 }}
                 placeholder="Dejar vacío si coincide"
-                value={cantJoyero} onChange={e=>setCantJoyero(e.target.value)}/>
+                value={cantJoyero}
+                onChange={(e) => setCantJoyero(e.target.value)}
+              />
             </div>
             <div>
-              <label className="form-label mb-0" style={{fontSize:12}}>N° remisión del joyero (opcional)</label>
-              <input type="text" className="form-control form-control-sm" style={{width:160}}
-                placeholder="Ej: REM-047" maxLength={50}
-                value={numJoyero} onChange={e=>setNumJoyero(e.target.value)}/>
+              <label className="form-label mb-0" style={{ fontSize: 12 }}>
+                N° remisión del joyero (opcional)
+              </label>
+              <input
+                type="text"
+                className="form-control form-control-sm"
+                style={{ width: 160 }}
+                placeholder="Ej: REM-047"
+                maxLength={50}
+                value={numJoyero}
+                onChange={(e) => setNumJoyero(e.target.value)}
+              />
             </div>
             <div>
-              <label className="form-label mb-0" style={{fontSize:12}}>Nota</label>
-              <input type="text" className="form-control form-control-sm" style={{width:200}}
-                placeholder="Opcional" maxLength={200}
-                value={notaEntrega} onChange={e=>setNotaEntrega(e.target.value)}/>
+              <label className="form-label mb-0" style={{ fontSize: 12 }}>
+                Nota
+              </label>
+              <input
+                type="text"
+                className="form-control form-control-sm"
+                style={{ width: 200 }}
+                placeholder="Opcional"
+                maxLength={200}
+                value={notaEntrega}
+                onChange={(e) => setNotaEntrega(e.target.value)}
+              />
             </div>
             <button className="btn btn-success btn-sm" onClick={handleEntrega}>
               Registrar entrega
             </button>
           </div>
-          {cantJoyero && cantJoyero!==cantEntrega && (
-            <div className="alert alert-warning py-1 px-2 mt-2 mb-0" style={{fontSize:12}}>
-              ⚠ Diferencia detectada — esta entrega quedará en estado <strong>DISPUTA</strong> para conciliación.
+          {cantJoyero && cantJoyero !== cantEntrega && (
+            <div
+              className="alert alert-warning py-1 px-2 mt-2 mb-0"
+              style={{ fontSize: 12 }}
+            >
+              ⚠ Diferencia detectada — esta entrega quedará en estado{" "}
+              <strong>DISPUTA</strong> para conciliación.
             </div>
           )}
         </div>
       )}
 
       {/* ── Historial de entregas (con conciliación) ── */}
-      {entregas.length>0 && (
+      {entregas.length > 0 && (
         <div className="mb-3">
-          <div className="fw-bold mb-1" style={{fontSize:12}}>Historial de entregas y remisiones</div>
-          <table className="table table-sm align-middle mb-0" style={{fontSize:11}}>
+          <div className="fw-bold mb-1" style={{ fontSize: 12 }}>
+            Historial de entregas y remisiones
+          </div>
+          <table
+            className="table table-sm align-middle mb-0"
+            style={{ fontSize: 11 }}
+          >
             <thead>
               <tr>
                 <th>Remisión (sistema)</th>
@@ -262,10 +797,15 @@ function DetallesPanel({ orden, refetch }) {
               </tr>
             </thead>
             <tbody>
-              {entregas.map(e=><EntregaRow key={e.id} e={e} onConciliar={handleConciliar}/>)}
+              {entregas.map((e) => (
+                <EntregaRow key={e.id} e={e} onConciliar={handleConciliar} />
+              ))}
             </tbody>
             <tfoot>
-              <tr className="fw-bold" style={{borderTop:'2px solid var(--border)'}}>
+              <tr
+                className="fw-bold"
+                style={{ borderTop: "2px solid var(--border)" }}
+              >
                 <td colSpan={3}>Total acumulado</td>
                 <td>{orden.cantidadEntregada} piezas</td>
                 <td></td>
@@ -278,63 +818,133 @@ function DetallesPanel({ orden, refetch }) {
       )}
 
       {/* ── Insumos enviados ── */}
-      <div className="fw-bold mb-1" style={{fontSize:12}}>Insumos enviados al joyero</div>
-      {(orden.detalles||[]).length===0 && <p className="text-muted small mb-2">Sin insumos registrados.</p>}
-      {(orden.detalles||[]).length>0 && (
-        <table className="table table-sm table-striped align-middle mb-3" style={{fontSize:11}}>
-          <thead><tr><th>Insumo</th><th>Compra</th><th>Cant/pieza</th><th>$ Unit.</th><th>$ Total</th><th>Enviado</th><th>Devuelto</th><th>Merma</th><th></th></tr></thead>
-          <tbody>{(orden.detalles||[]).map(d=><DetalleRow key={d.id} d={d} onDevolver={handleDevolucion} onEliminar={handleEliminar}/>)}</tbody>
+      <div className="fw-bold mb-1" style={{ fontSize: 12 }}>
+        Insumos enviados al joyero
+      </div>
+      {(orden.detalles || []).length === 0 && (
+        <p className="text-muted small mb-2">
+          Sin insumos registrados todavía.
+        </p>
+      )}
+      {(orden.detalles || []).length > 0 && (
+        <table
+          className="table table-sm table-striped align-middle mb-3"
+          style={{ fontSize: 11 }}
+        >
+          <thead>
+            <tr>
+              <th>Insumo</th>
+              <th>Lote inicial</th>
+              <th>Cant/pieza</th>
+              <th>$ Unit.</th>
+              <th>$ Total</th>
+              <th>Enviado (total)</th>
+              <th>Devuelto</th>
+              <th>Merma</th>
+              <th>Conciliación</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {(orden.detalles || []).map((d) => (
+              <DetalleRow
+                key={d.id}
+                d={d}
+                ordenCompleta={pendientes <= 0}
+                onRegistrarMovimiento={handleRegistrarMovimiento}
+                onEliminar={handleEliminar}
+              />
+            ))}
+          </tbody>
         </table>
       )}
-
-      {/* Agregar insumo */}
-      <div className="border rounded p-2 bg-white" style={{fontSize:12}}>
-        <div className="fw-bold mb-2" style={{fontSize:12}}>+ Agregar insumo a la orden</div>
-        <div className="d-flex flex-wrap gap-2 align-items-end">
-          <div>
-            <label className="form-label mb-0">Insumo</label>
-            <select className="form-select form-select-sm" style={{width:220}} value={piedraSelId} onChange={e=>{setPiedraSelId(e.target.value);setCompraSelId('');setCantidad('');}}>
-              <option value="">Seleccione insumo...</option>
-              {piedras.map(p=><option key={p.id} value={p.id}>{p.codigo} — {p.nombre} ({p.unidad?.nombre})</option>)}
-            </select>
-          </div>
-          {piedraSelId && <div>
-            <label className="form-label mb-0">Lote de compra</label>
-            <select className="form-select form-select-sm" style={{width:260}} value={compraSelId} onChange={e=>setCompraSelId(e.target.value)}>
-              <option value="">Seleccione lote...</option>
-              {comprasDisponibles.map(c=><option key={c.id} value={c.id}>{c.numero} · {fmtF(c.fecha)} · {fmt(c.costoUnitario)}/{piedraActual?.unidad?.nombre} · Disp: {fmtQ(c.cantidadDisponible,piedraActual?.unidad?.nombre)}</option>)}
-              {comprasDisponibles.length===0 && <option disabled>Sin stock</option>}
-            </select>
-          </div>}
-          {compraSelId && <>
-            <div>
-              <label className="form-label mb-0">Cant./pieza</label>
-              <input type="number" className="form-control form-control-sm" style={{width:100}} placeholder="0" value={cantidad} onChange={e=>setCantidad(e.target.value)}/>
-            </div>
-            <div>
-              <label className="form-label mb-0">Desperdicio %</label>
-              <input type="number" className="form-control form-control-sm" style={{width:80}} value={desperdicio} onChange={e=>setDesperdicio(e.target.value)}/>
-            </div>
-            {cantidad && <div className="text-muted" style={{fontSize:11}}>Enviar: {fmtQ(cantidadEnviada,piedraActual?.unidad?.nombre)} · {fmt(costoTotal)}</div>}
-          </>}
-          <button className="btn btn-primary btn-sm" onClick={handleAgregar}>Agregar</button>
+      {(orden.detalles || []).length > 0 && (
+        <div className="text-muted mb-2" style={{ fontSize: 10 }}>
+          Conciliación teórica: compara lo enviado contra lo que debería
+          consumirse según el BOM × piezas entregadas (ver Manual §6.6).
+          {pendientes > 0 &&
+            " * = preliminar, la orden aún no se entregó al 100%."}
         </div>
-      </div>
+      )}
+
+      {/* ── Sugerencias del BOM — lo que falta por enviar ── */}
+      {sugerencias.length > 0 && (
+        <div className="border rounded p-2 bg-white" style={{ fontSize: 12 }}>
+          <div className="fw-bold mb-2" style={{ fontSize: 12 }}>
+            📋 Insumos del BOM pendientes de enviar (calculado:{" "}
+            {orden.cantidadProgramada} × receta)
+          </div>
+          <table
+            className="table table-sm align-middle mb-0"
+            style={{ fontSize: 11 }}
+          >
+            <thead>
+              <tr className="table-dark">
+                <th>Insumo</th>
+                <th>Necesario</th>
+                <th>Desperdicio sugerido</th>
+                <th>Lote</th>
+                <th>A enviar</th>
+                <th>Valor</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {sugerencias.map((bom) => (
+                <SugerenciaRow
+                  key={bom.id}
+                  bom={bom}
+                  cantidadProgramada={orden.cantidadProgramada}
+                  onConfirmar={handleConfirmarSugerencia}
+                />
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {sugerencias.length === 0 &&
+        bomDelProducto.length > 0 &&
+        (orden.detalles || []).length > 0 && (
+          <div className="text-success" style={{ fontSize: 11 }}>
+            ✓ Todos los insumos del BOM de este producto ya tienen envío
+            registrado.
+          </div>
+        )}
+      {bomDelProducto.length === 0 && (
+        <div className="alert alert-warning py-2" style={{ fontSize: 12 }}>
+          ⚠ Este producto no tiene BOM configurado — vaya a Inventario →
+          Productos y agregue sus insumos antes de enviar esta orden.
+        </div>
+      )}
     </div>
   );
 }
 
 export default function OrdenProduccion() {
-  const empresaActual = useMemo(()=>{ try{return JSON.parse(localStorage.getItem('empresa')||'{}');}catch{return {};} },[]);
+  const empresaActual = useMemo(() => {
+    try {
+      return JSON.parse(localStorage.getItem("empresa") || "{}");
+    } catch {
+      return {};
+    }
+  }, []);
   return (
     <EntidadGenerica
-      tipoEntidad="ordenproduccion" campos={camposOrdenProduccion}
+      tipoEntidad="ordenproduccion"
+      campos={camposOrdenProduccion}
       titulo="Órdenes de Producción"
-      descripcion="Expanda ▸ para registrar entregas con remisión automática, insumos y conciliación"
+      descripcion="Expanda ▸ para registrar entregas con remisión automática, insumos sugeridos del BOM y movimientos"
       textoBoton="Orden"
-      queries={{ GET:GET_ORDENES_CURSOR, CREAR:CREAR_ORDEN, ACTUALIZAR:ACTUALIZAR_ORDEN, ELIMINAR:ELIMINAR_ORDEN }}
+      queries={{
+        GET: GET_ORDENES_CURSOR,
+        CREAR: CREAR_ORDEN,
+        ACTUALIZAR: ACTUALIZAR_ORDEN,
+        ELIMINAR: ELIMINAR_ORDEN,
+      }}
       fixedValues={{ empresaId: empresaActual.id }}
-      getDetalle={(orden,refetch)=><DetallesPanel orden={orden} refetch={refetch}/>}
+      getDetalle={(orden, refetch) => (
+        <DetallesPanel orden={orden} refetch={refetch} />
+      )}
     />
   );
 }

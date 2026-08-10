@@ -4,7 +4,7 @@ const BOM_FIELDS = `
   piedras {
     id piedraId productoId tipoId descripcion
     cantidad costoEstandardUnitario costoEstandardTotal desperdicio version
-    piedra     { id codigo nombre unidad { nombre } tipo { nombre } }
+    piedra     { id codigo nombre unidad { nombre } tipo { id codigo nombre } }
     tipoPiedra { id codigo nombre }
   }
 `;
@@ -19,7 +19,7 @@ export const GET_PRODUCTOS_CURSOR = gql`
       edges {
         node {
           id referencia nombre descripcion foto empresaId
-          gramosOro costoGramoOroUsado costoManoObra costoOtros
+          costoManoObra costoOtros
           multiplicador precioVenta enStock activo version
           categoria { id nombre }
           costoPiedras costoOro costoTotal

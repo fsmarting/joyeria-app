@@ -50,6 +50,15 @@ const ALLOWED_INPUT = {
     "porcentajeDefecto",
     "version",
   ],
+  // ── producto ─────────────────────────────────────────────────
+  // "gramosOro" / "costoGramoOroUsado" ELIMINADOS — el oro ahora es
+  // una línea más del BOM (ver entidad "productopiedra" gestionada
+  // por AGREGAR_INSUMO_PRODUCTO / ACTUALIZAR_INSUMO_PRODUCTO desde
+  // el panel de costeo, no por este buildInput genérico). Ya no
+  // existen en ProductoInput/ProductoUpdateInput del backend — si se
+  // llegaran a colar aquí, la mutación fallaría con un error de
+  // GraphQL ("field is not defined"), así que se quitan también de
+  // ALLOWED_INPUT/NUMERIC_FIELDS para que quede consistente.
   producto: [
     "empresaId",
     "referencia",
@@ -57,8 +66,6 @@ const ALLOWED_INPUT = {
     "categoriaId",
     "descripcion",
     "foto",
-    "gramosOro",
-    "costoGramoOroUsado",
     "costoManoObra",
     "costoOtros",
     "multiplicador",
@@ -188,11 +195,10 @@ const NUMERIC_FIELDS = {
     "porcentajeDefecto",
     "version",
   ],
+  // "gramosOro" / "costoGramoOroUsado" eliminados — ver nota arriba.
   producto: [
     "empresaId",
     "categoriaId",
-    "gramosOro",
-    "costoGramoOroUsado",
     "costoManoObra",
     "costoOtros",
     "multiplicador",

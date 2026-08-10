@@ -13,14 +13,50 @@ const incBom = {
   },
 };
 
-const calcCosteo = (p) => {
-  const costoPiedras = (p.piedras || []).reduce(
-    (s, pp) => s + Number(pp.costoEstandardTotal),
-    0,
-  );
-  const costoOro = Number(p.gramosOro) * Number(p.costoGramoOroUsado);
+// ── Costeo ───────────────────────────────────────────────────────
+// El costo de cada línea del BOM se toma de su costoEstandardUnitario
+// guardado — EXCEPTO el oro (piedra.tipo.codigo === 'ORO'), cuyo costo
+// se resuelve dinámicamente contra el último lote de CompraInsumo de
+// ese insumo. Así el costeo siempre refleja el precio de oro más
+// reciente sin tener que editar el BOM a mano cada vez que sube.
+// costoOro ya no es gramosOro × costoGramoOroUsado (esos campos se
+// eliminaron de Producto) — ahora es la suma de las líneas del BOM
+// cuyo insumo es de tipo ORO, y esas líneas YA están incluidas dentro
+// de costoPiedras (no se suman dos veces).
+//
+// El resultado se cachea en el propio objeto `p` (p.__costeo) para que
+// los 9 campos calculados de Producto que dependen de este cálculo no
+// disparen 9 consultas repetidas por cada producto de la lista.
+const calcCosteoAsync = async (p, prisma) => {
+  if (p.__costeo) return p.__costeo;
+
+  const piedras = p.piedras || [];
+  let costoPiedras = 0;
+  let costoOro = 0;
+
+  for (const pp of piedras) {
+    const esOro = pp.piedra?.tipo?.codigo === "ORO";
+    let costoUnitario = Number(pp.costoEstandardUnitario);
+
+    if (esOro) {
+      const ultimoLote = await prisma.compraInsumo.findFirst({
+        where: {
+          piedraId: pp.piedraId,
+          empresaId: p.empresaId,
+          deletedAt: null,
+        },
+        orderBy: { fecha: "desc" },
+      });
+      if (ultimoLote) costoUnitario = Number(ultimoLote.costoUnitario);
+    }
+
+    const totalLinea = Number(pp.cantidad) * costoUnitario;
+    costoPiedras += totalLinea;
+    if (esOro) costoOro += totalLinea;
+  }
+
   const costoTotal =
-    costoPiedras + costoOro + Number(p.costoManoObra) + Number(p.costoOtros);
+    costoPiedras + Number(p.costoManoObra) + Number(p.costoOtros);
   const mult = Number(p.multiplicador ?? 2.25);
   const precioSugerido = Math.round(costoTotal * mult);
   const pvpConIva = Math.round(precioSugerido * 1.19);
@@ -32,7 +68,8 @@ const calcCosteo = (p) => {
   const ivaValor = Math.round(precioSugerido * 0.19);
   const conTarjeta = Math.round(precioSugerido * 1.07);
   const comisionMax = Math.round(precioVenta * 0.2);
-  return {
+
+  p.__costeo = {
     costoPiedras,
     costoOro,
     costoTotal,
@@ -43,20 +80,30 @@ const calcCosteo = (p) => {
     conTarjeta,
     comisionMax,
   };
+  return p.__costeo;
 };
 
 export default {
   Producto: {
     multiplicador: (p) => Number(p.multiplicador ?? 2.25),
-    costoPiedras: (p) => calcCosteo(p).costoPiedras,
-    costoOro: (p) => calcCosteo(p).costoOro,
-    costoTotal: (p) => calcCosteo(p).costoTotal,
-    precioSugerido: (p) => calcCosteo(p).precioSugerido,
-    pvpConIva: (p) => calcCosteo(p).pvpConIva,
-    margen: (p) => calcCosteo(p).margen,
-    ivaValor: (p) => calcCosteo(p).ivaValor,
-    conTarjeta: (p) => calcCosteo(p).conTarjeta,
-    comisionMax: (p) => calcCosteo(p).comisionMax,
+    costoPiedras: async (p, _, { prisma }) =>
+      (await calcCosteoAsync(p, prisma)).costoPiedras,
+    costoOro: async (p, _, { prisma }) =>
+      (await calcCosteoAsync(p, prisma)).costoOro,
+    costoTotal: async (p, _, { prisma }) =>
+      (await calcCosteoAsync(p, prisma)).costoTotal,
+    precioSugerido: async (p, _, { prisma }) =>
+      (await calcCosteoAsync(p, prisma)).precioSugerido,
+    pvpConIva: async (p, _, { prisma }) =>
+      (await calcCosteoAsync(p, prisma)).pvpConIva,
+    margen: async (p, _, { prisma }) =>
+      (await calcCosteoAsync(p, prisma)).margen,
+    ivaValor: async (p, _, { prisma }) =>
+      (await calcCosteoAsync(p, prisma)).ivaValor,
+    conTarjeta: async (p, _, { prisma }) =>
+      (await calcCosteoAsync(p, prisma)).conTarjeta,
+    comisionMax: async (p, _, { prisma }) =>
+      (await calcCosteoAsync(p, prisma)).comisionMax,
   },
 
   Query: {
@@ -125,8 +172,6 @@ export default {
         },
         select: { id: true },
       });
-      console.log("Existe...", existe);
-      console.log("!!Existe...", !!existe);
       return !!existe;
     },
   },

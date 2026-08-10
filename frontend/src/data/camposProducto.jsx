@@ -70,29 +70,17 @@ export const camposProducto = [
     },
     render: (f) => f.categoria?.nombre ?? "-",
   },
-  {
-    nombre: "gramosOro",
-    etiqueta: "Gramos Oro",
-    tipoForm: "number",
-    ancho: "90px",
-    ordenListado: 5,
-    valorDefecto: 0,
-  },
-  {
-    nombre: "costoGramoOroUsado",
-    etiqueta: "$ / Gramo",
-    tipoForm: "number",
-    ancho: "110px",
-    ordenListado: 6,
-    valorDefecto: 0,
-    render: (f) => fmt(f.costoGramoOroUsado),
-  },
+  // ── gramosOro / costoGramoOroUsado ELIMINADOS ──────────────────
+  // El oro ahora se agrega como línea del BOM (panel de costeo, al
+  // expandir ▸ el producto) igual que cualquier piedra — busque el
+  // SKU de oro (ej. ORO-18K) en "Piedra / insumo". Su costo ya no se
+  // digita aquí: se toma automáticamente del último lote comprado.
   {
     nombre: "costoManoObra",
     etiqueta: "Mano de Obra",
     tipoForm: "number",
     ancho: "110px",
-    ordenListado: 7,
+    ordenListado: 5,
     valorDefecto: 0,
     render: (f) => fmt(f.costoManoObra),
   },
@@ -101,7 +89,7 @@ export const camposProducto = [
     etiqueta: "Empaques",
     tipoForm: "number",
     ancho: "90px",
-    ordenListado: 8,
+    ordenListado: 6,
     valorDefecto: 0,
     render: (f) => fmt(f.costoOtros),
   },
@@ -110,7 +98,7 @@ export const camposProducto = [
     etiqueta: "Multiplicador",
     tipoForm: "number",
     ancho: "90px",
-    ordenListado: 9,
+    ordenListado: 7,
     valorDefecto: 2.25,
     render: (f) => `×${Number(f.multiplicador ?? 2.25).toFixed(2)}`,
   },
@@ -119,7 +107,7 @@ export const camposProducto = [
     etiqueta: "Costo Total",
     soloListado: true,
     ancho: "110px",
-    ordenListado: 10,
+    ordenListado: 8,
     render: (f) => fmt(f.costoTotal),
   },
   {
@@ -127,7 +115,7 @@ export const camposProducto = [
     etiqueta: "P. Sugerido",
     soloListado: true,
     ancho: "110px",
-    ordenListado: 11,
+    ordenListado: 9,
     render: (f) => fmt(f.precioSugerido),
   },
   {
@@ -135,16 +123,24 @@ export const camposProducto = [
     etiqueta: "PVP + IVA",
     soloListado: true,
     ancho: "110px",
-    ordenListado: 12,
+    ordenListado: 10,
     render: (f) => fmt(f.pvpConIva),
   },
+  // ── precioVenta: oculto en creación ─────────────────────────────
+  // Al crear el producto todavía no existe el BOM, así que no hay
+  // costo real ni precioSugerido con qué guiar este número — pedirlo
+  // en ese momento es adivinar a ciegas. Se guarda en $0 por defecto
+  // (valorDefecto sigue aplicando aunque el campo no se muestre) y el
+  // campo reaparece, editable, al EDITAR el producto ya guardado —
+  // ahí es donde vive el botón "usar sugerido" del panel de costeo.
   {
     nombre: "precioVenta",
     etiqueta: "Precio Venta",
     tipoForm: "number",
     ancho: "120px",
-    ordenListado: 13,
+    ordenListado: 11,
     valorDefecto: 0,
+    ocultarEnCreacion: true,
     render: (f) => fmt(f.precioVenta),
   },
   {
@@ -152,7 +148,7 @@ export const camposProducto = [
     etiqueta: "Margen",
     soloListado: true,
     ancho: "80px",
-    ordenListado: 14,
+    ordenListado: 12,
     render: (f) => {
       const m = Number(f.margen);
       const c = m >= 50 ? "success" : m >= 30 ? "warning" : "danger";
@@ -164,7 +160,7 @@ export const camposProducto = [
     etiqueta: "Stock",
     soloListado: true,
     ancho: "80px",
-    ordenListado: 15,
+    ordenListado: 13,
     render: (f) => {
       const s = Number(f.enStock ?? 0);
       const c = s > 3 ? "success" : s > 0 ? "warning" : "secondary";

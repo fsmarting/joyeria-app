@@ -231,8 +231,6 @@ model Producto {
   nombre String @db.VarChar(150)
   categoriaId Int?
   descripcion String? @db.VarChar(500)
-  gramosOro Decimal @default(0) @db.Decimal(10,3)
-  costoGramoOroUsado Decimal @default(0) @db.Decimal(12,2)
   costoManoObra Decimal @default(0) @db.Decimal(12,2)
   costoOtros Decimal @default(0) @db.Decimal(12,2)
   precioVenta Decimal @default(0) @db.Decimal(12,2)
@@ -298,6 +296,7 @@ model CompraInsumo {
   piedra Piedra @relation("CompraInsumo_Piedra", fields: [piedraId], references: [id])
   proveedor Tercero? @relation("CompraInsumo_Proveedor", fields: [proveedorId], references: [id])
   detallesOrden DetalleOrdenProduccion[] @relation("DetalleOrden_Compra")
+  movimientos MovimientoInsumoOrden[] @relation("MovimientoInsumoOrden_Compra")
   @@unique([empresaId, numero])
   @@index([empresaId, piedraId])
 }
@@ -358,7 +357,34 @@ model DetalleOrdenProduccion {
   ordenProduccion OrdenProduccion @relation("DetalleOrden_Orden", fields: [ordenProduccionId], references: [id], onDelete: Cascade)
   compraInsumo CompraInsumo @relation("DetalleOrden_Compra", fields: [compraInsumoId], references: [id])
   piedra Piedra @relation("DetalleOrden_Piedra", fields: [piedraId], references: [id])
+  movimientos MovimientoInsumoOrden[] @relation("MovimientoInsumoOrden_Detalle")
   @@index([ordenProduccionId])
+  @@index([compraInsumoId])
+}
+
+// ── NUEVO ─────────────────────────────────────────────────────────
+// Historial de todo lo que se mueve para un insumo de una orden:
+// el envío inicial (creado junto con el DetalleOrdenProduccion), los
+// envíos adicionales (cuando al joyero le faltó material) y las
+// devoluciones (sobrante que el joyero regresa). DetalleOrdenProduccion
+// sigue siendo "el plan"; esta tabla es "lo que pasó en realidad" —
+// cantidadEnviada/valorEnviado/cantidadDevuelta/valorDevuelto en el
+// detalle se recalculan sumando estos movimientos.
+model MovimientoInsumoOrden {
+  id Int @id @default(autoincrement())
+  detalleOrdenProduccionId Int
+  compraInsumoId Int
+  tipoMovimiento String @db.VarChar(20) // INICIAL | ADICIONAL | DEVOLUCION
+  cantidad Decimal @db.Decimal(14,4)
+  valor Decimal @db.Decimal(14,2)
+  fecha DateTime @default(now())
+  nota String? @db.VarChar(300)
+  usu_creacion String?
+  version Int @default(1)
+  deletedAt DateTime?
+  detalle DetalleOrdenProduccion @relation("MovimientoInsumoOrden_Detalle", fields: [detalleOrdenProduccionId], references: [id], onDelete: Cascade)
+  compraInsumo CompraInsumo @relation("MovimientoInsumoOrden_Compra", fields: [compraInsumoId], references: [id])
+  @@index([detalleOrdenProduccionId])
   @@index([compraInsumoId])
 }
 

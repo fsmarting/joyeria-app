@@ -20,8 +20,6 @@ export default /* GraphQL */ `
     nombre: String!
     descripcion: String
     foto: String
-    gramosOro: Float!
-    costoGramoOroUsado: Float!
     costoManoObra: Float!
     costoOtros: Float!
     multiplicador: Float!
@@ -57,8 +55,6 @@ export default /* GraphQL */ `
     categoriaId: Int
     descripcion: String
     foto: String
-    gramosOro: Float!
-    costoGramoOroUsado: Float!
     costoManoObra: Float!
     costoOtros: Float!
     multiplicador: Float
@@ -73,8 +69,6 @@ export default /* GraphQL */ `
     categoriaId: Int
     descripcion: String
     foto: String
-    gramosOro: Float!
-    costoGramoOroUsado: Float!
     costoManoObra: Float!
     costoOtros: Float!
     multiplicador: Float
