@@ -181,6 +181,12 @@ function BomPanel({ producto, refetch }) {
   const piedras = (dataPiedras?.piedrasFiltradosCursor?.edges || []).map(
     (e) => e.node,
   );
+  // ── NUEVO — unidad real del insumo seleccionado en el formulario de
+  // agregar (Gramos/Quilates/Unidades/etc.), para no rotular el campo
+  // de cantidad como "Peso / gramos" cuando el insumo no se pesa.
+  const unidadSeleccionada = piedras.find(
+    (p) => String(p.id) === selectedPiedraId,
+  )?.unidad?.nombre;
 
   // ── NUEVO — histórico de costo por orden de producción ──────────
   // Solo informativo: NO es costeo contable de inventario, es el
@@ -347,7 +353,13 @@ function BomPanel({ producto, refetch }) {
               <th>Tipo</th>
               <th>Descripción</th>
               <th>Piedra/Insumo</th>
-              <th>Peso</th>
+              {/* 🩹 antes decía "Peso" — correcto para el oro (que se
+                  pesa en gramos) pero engañoso para insumos que se
+                  manejan por unidad (ej. diamantes) o por quilate. Cada
+                  fila ya muestra su propia unidad real al lado del
+                  número (fmtQ), así que el encabezado solo necesita
+                  ser genérico. */}
+              <th>Cantidad</th>
               <th>$/Unidad</th>
               <th>Total</th>
               <th></th>
@@ -434,7 +446,17 @@ function BomPanel({ producto, refetch }) {
               </select>
             </div>
             <div>
-              <label className="form-label mb-0">Peso / gramos (CT / GR)</label>
+              {/* 🩹 antes decía "Peso / gramos (CT / GR)" fijo — correcto
+                  solo para insumos que se pesan (oro, piedras en quilates).
+                  Para insumos que se manejan por unidad (ej. diamantes
+                  tallados, broches) esa etiqueta confundía: "peso" no
+                  aplica y "gramos" es la unidad equivocada. Ahora muestra
+                  la unidad real del insumo seleccionado (Piedra.unidad,
+                  ej. "Gramos", "Quilates", "Unidades") y cae a un texto
+                  genérico "Cantidad" mientras no haya nada seleccionado. */}
+              <label className="form-label mb-0">
+                Cantidad{unidadSeleccionada ? ` (${unidadSeleccionada})` : ""}
+              </label>
               <input
                 type="number"
                 className="form-control form-control-sm"
