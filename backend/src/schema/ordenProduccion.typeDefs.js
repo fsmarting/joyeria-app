@@ -30,6 +30,9 @@ export default /* GraphQL */ `
     usu_creacion: String
     version: Int!
     compraInsumo: CompraInsumo
+    # ── NUEVO — remisión de envío de insumos (solo en INICIAL/ADICIONAL,
+    # nula en DEVOLUCION). Ver Manual v5 §6.x.
+    numeroRemision: String
   }
   type DetalleOrdenProduccion {
     id: Int!

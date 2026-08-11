@@ -89,6 +89,28 @@ const generarNumeroRemision = async (prisma, ordenProduccionId, numeroOrden) => 
   return `REM-${numeroOrden}-${consecutivo}`;
 };
 
+// ── NUEVO — remisión de envío de insumos ──────────────────────────
+// Contraparte de generarNumeroRemision (que es para cuando el joyero
+// ENTREGA piezas producidas). Esta es para cuando Río Rayo ENVÍA
+// insumos al joyero — deber ser acordado con el usuario: un envío de
+// material de alto valor (oro, piedras) a alguien externo a la empresa
+// debería quedar respaldado por un documento firmable, no solo un
+// registro en pantalla. Solo aplica a movimientos de salida (INICIAL
+// al crear el detalle, ADICIONAL si se le envía más después) — las
+// DEVOLUCION son la dirección contraria (el joyero regresa material) y
+// por ahora no generan su propia remisión.
+const generarNumeroRemisionEnvio = async (prisma, ordenProduccionId, numeroOrden) => {
+  const count = await prisma.movimientoInsumoOrden.count({
+    where: {
+      detalle: { ordenProduccionId },
+      tipoMovimiento: { in: ['INICIAL', 'ADICIONAL'] },
+      deletedAt: null,
+    },
+  });
+  const consecutivo = String(count + 1).padStart(2, '0');
+  return `REM-ENV-${numeroOrden}-${consecutivo}`;
+};
+
 // ── Conciliación teórica de insumos (solo lectura) ─────────────────
 // Ver Manual de Operación v5 §6.6. Compara lo enviado (neto de
 // devoluciones) contra lo que "debería" consumirse según la línea del
@@ -364,6 +386,8 @@ export default {
       // llama después de que la orden ya avanzó.
       const pendienteId = await obtenerEstadoOrdenId(prisma, orden.empresaId, 'PEND');
       const procesoId   = await obtenerEstadoOrdenId(prisma, orden.empresaId, 'PROC');
+      // ── NUEVO — remisión de envío para este insumo.
+      const numeroRemisionEnvio = await generarNumeroRemisionEnvio(prisma, orden.id, orden.numero);
 
       return prisma.$transaction(async (tx) => {
         await tx.compraInsumo.update({ where: { id: input.compraInsumoId }, data: { cantidadDisponible: { decrement: Number(input.cantidadEnviada) } } });
@@ -379,6 +403,7 @@ export default {
             tipoMovimiento: 'INICIAL',
             cantidad: Number(input.cantidadEnviada),
             valor: Number(input.valorEnviado),
+            numeroRemision: numeroRemisionEnvio,
             usu_creacion: user.codigo,
           },
         });
@@ -426,6 +451,8 @@ export default {
           throw new Error(`Stock insuficiente en ese lote. Disponible: ${compra.cantidadDisponible}`);
 
         const valor = Number(cantidad) * Number(compra.costoUnitario);
+        // ── NUEVO — remisión de envío para este envío adicional.
+        const numeroRemisionEnvio = await generarNumeroRemisionEnvio(prisma, detalle.ordenProduccion.id, detalle.ordenProduccion.numero);
 
         return prisma.$transaction(async (tx) => {
           await tx.compraInsumo.update({ where: { id: compra.id }, data: { cantidadDisponible: { decrement: Number(cantidad) } } });
@@ -437,6 +464,7 @@ export default {
               cantidad: Number(cantidad),
               valor,
               nota,
+              numeroRemision: numeroRemisionEnvio,
               usu_creacion: user.codigo,
             },
           });

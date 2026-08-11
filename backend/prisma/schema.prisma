@@ -362,6 +362,7 @@ model DetalleOrdenProduccion {
   @@index([compraInsumoId])
 }
 
+
 // ── NUEVO ─────────────────────────────────────────────────────────
 // Historial de todo lo que se mueve para un insumo de una orden:
 // el envío inicial (creado junto con el DetalleOrdenProduccion), los
@@ -379,6 +380,13 @@ model MovimientoInsumoOrden {
   valor Decimal @db.Decimal(14,2)
   fecha DateTime @default(now())
   nota String? @db.VarChar(300)
+  // ── NUEVO — remisión de envío de insumos ────────────────────────
+  // Solo se genera para movimientos de SALIDA hacia el joyero (INICIAL
+  // y ADICIONAL) — es la contraparte de EntregaOrden.numeroRemision,
+  // que ya existe para cuando el joyero devuelve piezas producidas.
+  // Nulo en movimientos DEVOLUCION (por ahora, ver conversación con el
+  // usuario). Formato: REM-ENV-{numeroOrden}-{consecutivo}.
+  numeroRemision String? @db.VarChar(30)
   usu_creacion String?
   version Int @default(1)
   deletedAt DateTime?

@@ -2,7 +2,7 @@ import { gql } from '@apollo/client';
 
 const MOVIMIENTO_FIELDS = `
   id detalleOrdenProduccionId compraInsumoId tipoMovimiento
-  cantidad valor fecha nota usu_creacion version
+  cantidad valor fecha nota usu_creacion version numeroRemision
   compraInsumo { id numero fecha costoUnitario }
 `;
 
