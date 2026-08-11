@@ -111,6 +111,24 @@ const generarNumeroRemisionEnvio = async (prisma, ordenProduccionId, numeroOrden
   return `REM-ENV-${numeroOrden}-${consecutivo}`;
 };
 
+// ── NUEVO — número de orden de producción automático ────────────────
+// Antes lo escribía el usuario a mano (ej. "OP-2026-001") y el resolver
+// solo validaba que no estuviera repetido — riesgo de typos, formatos
+// distintos entre usuarios, o el error "el número ya existe" a mitad de
+// captura. Ahora se genera solo, mismo criterio que las remisiones
+// (REM-.../REM-ENV-...): un prefijo + consecutivo, contando lo que ya
+// existe. Se reinicia por año (OP-2026-001, OP-2027-001, ...) porque así
+// es como el usuario ya nombraba sus órdenes a mano.
+const generarNumeroOrden = async (prisma, empresaId) => {
+  const anio = new Date().getFullYear();
+  const prefijo = `OP-${anio}-`;
+  const count = await prisma.ordenProduccion.count({
+    where: { empresaId, numero: { startsWith: prefijo } },
+  });
+  const consecutivo = String(count + 1).padStart(3, '0');
+  return `${prefijo}${consecutivo}`;
+};
+
 // ── Conciliación teórica de insumos (solo lectura) ─────────────────
 // Ver Manual de Operación v5 §6.6. Compara lo enviado (neto de
 // devoluciones) contra lo que "debería" consumirse según la línea del
@@ -224,8 +242,6 @@ export default {
     crearOrdenProduccion: async (_, { input }, { prisma, user }) => {
       requireAuth(user);
       validarEmpresa(input.empresaId, user.empresaActualId);
-      const existe = await prisma.ordenProduccion.findFirst({ where: { numero: input.numero, empresaId: user.empresaActualId, deletedAt: null } });
-      if (existe) throw new Error(`El número ${input.numero} ya existe`);
       const producto = await prisma.producto.findUnique({ where: { id: Number(input.productoId) }, include: { piedras: true } });
       if (!producto) throw new Error('Producto no existe');
       const costoInsumos = producto.piedras.reduce((s, pp) => s + Number(pp.costoEstandardTotal), 0);
@@ -235,8 +251,12 @@ export default {
       // lo que venga en input.estadoId (en el formulario el campo ya
       // quedó oculto/solo-lectura, pero se protege también aquí).
       const pendienteId = await obtenerEstadoOrdenId(prisma, user.empresaActualId, 'PEND');
+      // ── NUEVO — el número de orden ya no lo escribe el usuario (ver
+      // generarNumeroOrden arriba); lo que venga en input.numero se
+      // ignora y se pisa con el generado aquí.
+      const numero = await generarNumeroOrden(prisma, user.empresaActualId);
       return prisma.ordenProduccion.create({
-        data: { ...input, estadoId: pendienteId, fechaEnvio: new Date(input.fechaEnvio), fechaEstimada: input.fechaEstimada?new Date(input.fechaEstimada):null, costoUnitarioEstandard, costoTotalEstandard, cantidadEntregada: 0, valorEntregado: 0, usu_creacion: user.codigo },
+        data: { ...input, numero, estadoId: pendienteId, fechaEnvio: new Date(input.fechaEnvio), fechaEstimada: input.fechaEstimada?new Date(input.fechaEstimada):null, costoUnitarioEstandard, costoTotalEstandard, cantidadEntregada: 0, valorEntregado: 0, usu_creacion: user.codigo },
         include: incluirOrden,
       });
     },
@@ -245,8 +265,11 @@ export default {
       requireAuth(user);
       // ── NUEVO — estadoId ya no se acepta desde el formulario genérico
       // de edición (lo mueve el sistema, o cancelarOrdenProduccion) —
-      // se descarta aunque venga con un valor.
-      const { id, version, estadoId, ...data } = input;
+      // se descarta aunque venga con un valor. Lo mismo con numero: una
+      // vez generado al crear la orden, queda fijo — no tiene sentido
+      // dejarlo editar a mano (rompería la trazabilidad con las
+      // remisiones, que ya usan este número como parte del suyo).
+      const { id, version, estadoId, numero, ...data } = input;
       const original = await prisma.ordenProduccion.findUnique({ where: { id: Number(id) } });
       if (!original) throw new Error('Orden no existe');
       validarEmpresa(original.empresaId, user.empresaActualId);

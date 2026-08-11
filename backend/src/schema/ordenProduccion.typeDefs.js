@@ -96,7 +96,12 @@ export default /* GraphQL */ `
 
   input OrdenProduccionInput {
     empresaId: Int!
-    numero: String!
+    # ── NUEVO — ya no lo escribe el usuario: el backend lo genera
+    # automático (OP-{año}-{consecutivo}, ver generarNumeroOrden en el
+    # resolver), igual que ya pasa con las remisiones. Se deja el campo
+    # opcional solo para no romper el payload existente — su valor se
+    # ignora siempre.
+    numero: String
     descripcion: String
     productoId: Int!
     joyeroId: Int!

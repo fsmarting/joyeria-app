@@ -10,15 +10,20 @@ const fmt = (n) =>
 
 export const camposOrdenProduccion = [
   // ── Número ──────────────────────────────────────────────────────
+  // ── NUEVO — el número ya no lo escribe el usuario: el backend lo
+  // genera solo al crear la orden (OP-{año}-{consecutivo}, ej.
+  // OP-2026-001), igual que ya pasa con las remisiones. Se oculta en
+  // el formulario de creación (no hay nada que capturar) y se muestra
+  // de solo lectura al editar — mismo criterio que "estadoId".
   {
     nombre: "numero",
     etiqueta: "N° Orden",
     tipoForm: "text",
-    obligatorio: true,
     maxLength: 20,
     ancho: "110px",
     ordenListado: 1,
-    placeholder: "Ej: OP-2026-001",
+    ocultarEnCreacion: true,
+    readOnly: true,
   },
   // ── Producto ────────────────────────────────────────────────────
   {
