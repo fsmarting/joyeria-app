@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { useQuery, useMutation } from '@apollo/client';
 import { toast } from 'react-toastify';
 import EntidadGenerica from '../../components/EntidadGenerica.jsx';
@@ -6,7 +6,7 @@ import { camposOrdenProduccion } from '../../data/camposOrdenProduccion.jsx';
 import {
   GET_ORDENES_CURSOR, CREAR_ORDEN, ACTUALIZAR_ORDEN, ELIMINAR_ORDEN,
   REGISTRAR_ENTREGA, CONCILIAR_ENTREGA, CANCELAR_ORDEN,
-  AGREGAR_DETALLE, REGISTRAR_MOVIMIENTO_INSUMO, ELIMINAR_DETALLE,
+  AGREGAR_DETALLE, AGREGAR_DETALLES_LOTE, REGISTRAR_MOVIMIENTO_INSUMO, ELIMINAR_DETALLE,
 } from '../../graphql/ordenProduccionQueries.js';
 import { GET_COMPRAS_POR_PIEDRA } from '../../graphql/compraInsumoQueries.js';
 
@@ -196,7 +196,7 @@ function DetalleRow({ d, ordenCompleta, onRegistrarMovimiento, onEliminar, onImp
       )}
       {mostrarHist && (
         <tr className="bg-light"><td colSpan={10} className="py-2 px-3">
-          <MovimientosHistorial movimientos={d.movimientos} onImprimir={(m)=>onImprimirRemision(m,d)} />
+          <MovimientosHistorial movimientos={d.movimientos} onImprimir={onImprimirRemision} />
         </td></tr>
       )}
     </>
@@ -264,7 +264,13 @@ function EntregaRow({ e, onConciliar }) {
 }
 
 // ── Fila de sugerencia — insumo del BOM que aún no se ha enviado ──
-function SugerenciaRow({ bom, cantidadProgramada, onConfirmar }) {
+// ── NUEVO — checked/onToggleCheck/onEstadoChange: soporte para
+// confirmar varios insumos juntos bajo una sola remisión (ver el botón
+// "Confirmar envío de seleccionados" en DetallesPanel). onEstadoChange
+// le reporta al padre, en cada cambio, si esta fila está lista para
+// enviarse (lote elegido, cantidad > 0) y con qué datos exactos —
+// así el padre arma el arreglo del lote sin duplicar esta lógica.
+function SugerenciaRow({ bom, cantidadProgramada, onConfirmar, checked, onToggleCheck, onEstadoChange }) {
   const [compraSelId, setCompra]     = useState('');
   const [incluirDesp, setIncluirDesp] = useState(false);
   const [cantOverride, setCantOverride] = useState(null); // null = usar el cálculo automático
@@ -284,24 +290,38 @@ function SugerenciaRow({ bom, cantidadProgramada, onConfirmar }) {
   const costoTotal     = Number(bom.cantidad) * costoUnitario * Number(cantidadProgramada);
   const valorEnviado   = cantidadAEnviar * costoUnitario;
 
+  const inputActual = {
+    piedraId: bom.piedraId,
+    compraInsumoId: Number(compraSelId),
+    cantidad: Number(bom.cantidad),
+    costoUnitario,
+    costoTotal,
+    desperdicio: Number(bom.desperdicio || 0),
+    cantidadEnviada: cantidadAEnviar,
+    valorEnviado,
+  };
+  const stockAlcanza = !compraActual || cantidadAEnviar <= Number(compraActual.cantidadDisponible);
+  const valido = !!compraSelId && cantidadAEnviar > 0 && stockAlcanza;
+
+  useEffect(() => {
+    onEstadoChange(bom.id, { valido, input: valido ? inputActual : null, stockAlcanza });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [compraSelId, cantidadAEnviar, costoUnitario, valido]);
+
   const confirmar = () => {
     if (!compraSelId) return toast.warning('Seleccione el lote de compra');
     if (compraActual && cantidadAEnviar > Number(compraActual.cantidadDisponible))
       return toast.error(`Stock insuficiente en ese lote. Disponible: ${compraActual.cantidadDisponible}`);
-    onConfirmar({
-      piedraId: bom.piedraId,
-      compraInsumoId: Number(compraSelId),
-      cantidad: Number(bom.cantidad),
-      costoUnitario,
-      costoTotal,
-      desperdicio: Number(bom.desperdicio || 0),
-      cantidadEnviada: cantidadAEnviar,
-      valorEnviado,
-    });
+    onConfirmar(inputActual);
   };
 
   return (
     <tr>
+      <td>
+        <input type="checkbox" checked={checked} disabled={!valido}
+          title={valido ? 'Incluir en el envío por lote' : 'Elija un lote con stock suficiente para poder incluirlo'}
+          onChange={()=>onToggleCheck(bom.id)} />
+      </td>
       <td>
         <strong>{bom.piedra?.codigo}</strong> {bom.piedra?.nombre}
         {esOro && <span className="badge bg-warning text-dark ms-1" style={{fontSize:9}}>🥇</span>}
@@ -354,9 +374,14 @@ function DetallesPanel({ orden, refetch }) {
   const [registrarEntrega]  = useMutation(REGISTRAR_ENTREGA);
   const [conciliar]         = useMutation(CONCILIAR_ENTREGA);
   const [agregar]           = useMutation(AGREGAR_DETALLE);
+  const [agregarLote]       = useMutation(AGREGAR_DETALLES_LOTE);
   const [registrarMovimiento] = useMutation(REGISTRAR_MOVIMIENTO_INSUMO);
   const [eliminar]          = useMutation(ELIMINAR_DETALLE);
   const [cancelarOrden]     = useMutation(CANCELAR_ORDEN);
+
+  // ── NUEVO — confirmar varios insumos juntos bajo una sola remisión ──
+  const [estadoFilas, setEstadoFilas]     = useState({}); // { [bomId]: {valido, input} }, reportado por cada SugerenciaRow
+  const [seleccionadas, setSeleccionadas] = useState(new Set()); // ids de bom marcados con el checkbox
 
   // ── NUEVO — cancelar orden ──────────────────────────────────────
   const [cancelando, setCancelando]           = useState(false);
@@ -421,6 +446,42 @@ function DetallesPanel({ orden, refetch }) {
     } catch(e) { toast.error(e.message); }
   };
 
+  // ── NUEVO — confirmar varios insumos juntos bajo una sola remisión ──
+  const handleEstadoFila = (bomId, data) => {
+    setEstadoFilas(prev => ({ ...prev, [bomId]: data }));
+    // si la fila deja de tener un lote/cantidad válido, se destilda sola
+    // (evita mandar al backend una selección que ya no tiene sentido)
+    if (!data.valido) {
+      setSeleccionadas(prev => {
+        if (!prev.has(bomId)) return prev;
+        const next = new Set(prev); next.delete(bomId); return next;
+      });
+    }
+  };
+
+  const handleToggleCheck = (bomId) => {
+    setSeleccionadas(prev => {
+      const next = new Set(prev);
+      next.has(bomId) ? next.delete(bomId) : next.add(bomId);
+      return next;
+    });
+  };
+
+  const filasParaLote = [...seleccionadas].filter(id => estadoFilas[id]?.valido);
+
+  const handleConfirmarLote = async () => {
+    if (filasParaLote.length === 0) return toast.warning('Marque al menos un insumo (elija primero su lote y cantidad)');
+    try {
+      await agregarLote({ variables: { input: {
+        ordenProduccionId: orden.id,
+        detalles: filasParaLote.map(id => estadoFilas[id].input),
+      }}});
+      toast.success(`Envío registrado — ${filasParaLote.length} insumos bajo una sola remisión`);
+      setSeleccionadas(new Set());
+      await refetch();
+    } catch(e) { toast.error(e.message); }
+  };
+
   const handleRegistrarMovimiento = async (input) => {
     try {
       await registrarMovimiento({ variables: { input } });
@@ -442,9 +503,38 @@ function DetallesPanel({ orden, refetch }) {
   // archivo guardado en el servidor — se arma al vuelo con los datos
   // que ya están en pantalla, igual que cualquier "imprimir factura"
   // de un sistema web común.
-  const handleImprimirRemision = (m, d) => {
-    const unidad = d.piedra?.unidad?.nombre || '';
-    const win = window.open('', '_blank', 'width=760,height=920');
+  //
+  // 🩹 Antes imprimía SOLO la línea del insumo donde se hizo clic —
+  // si varios insumos se enviaron juntos (confirmación por lote), cada
+  // uno quedaba en un papel separado aunque compartieran el mismo
+  // número de remisión. Ahora reúne TODAS las líneas (de cualquier
+  // insumo de la orden) que tengan el mismo numeroRemision que el
+  // movimiento donde se hizo clic, y las imprime juntas en un solo
+  // documento — así el papel refleja lo que realmente se entregó en
+  // ese paquete físico.
+  const handleImprimirRemision = (m) => {
+    const lineas = [];
+    for (const det of (orden.detalles||[])) {
+      for (const mov of (det.movimientos||[])) {
+        if (mov.numeroRemision && mov.numeroRemision === m.numeroRemision) lineas.push({ mov, det });
+      }
+    }
+    if (lineas.length === 0) return; // no debería pasar — el botón solo aparece si hay numeroRemision
+
+    const fechaTexto = m.fecha ? new Date(m.fecha).toLocaleDateString('es-CO') : '';
+    const filasHtml = lineas.map(({ mov, det }) => {
+      const u = det.piedra?.unidad?.nombre || '';
+      return `<tr>
+        <td>${det.piedra?.codigo||''} — ${det.piedra?.nombre||''}</td>
+        <td>${mov.compraInsumo?.numero||'—'}</td>
+        <td>${LABEL_MOVIMIENTO[mov.tipoMovimiento]||mov.tipoMovimiento}</td>
+        <td>${Number(mov.cantidad).toLocaleString('es-CO',{maximumFractionDigits:4})} ${u}</td>
+        <td>${fmt(mov.valor)}</td>
+      </tr>`;
+    }).join('');
+    const totalValor = lineas.reduce((s,{mov})=>s+Number(mov.valor),0);
+
+    const win = window.open('', '_blank', 'width=800,height=940');
     if (!win) { toast.error('El navegador bloqueó la ventana — permita ventanas emergentes para imprimir la remisión'); return; }
     win.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>${m.numeroRemision||'Remisión de envío'}</title>
       <style>
@@ -453,22 +543,24 @@ function DetallesPanel({ orden, refetch }) {
         .sub{color:#555;font-size:12px;margin-bottom:22px;}
         table{width:100%;border-collapse:collapse;margin:14px 0;}
         th,td{border:1px solid #999;padding:7px 10px;font-size:13px;text-align:left;vertical-align:top;}
-        th{background:#eee;width:38%;}
+        th{background:#eee;}
+        .cabecera th{width:32%;}
+        .lineas thead th{background:#222;color:#fff;}
+        tfoot td{font-weight:bold;background:#f4f4f4;}
         .firmas{margin-top:70px;display:flex;justify-content:space-between;gap:40px;}
         .firmas div{flex:1;border-top:1px solid #333;padding-top:6px;font-size:12px;text-align:center;}
         @media print { @page{margin:16mm;} }
       </style></head><body>
       <h1>Río Rayo — Remisión de envío de insumos</h1>
-      <div class="sub">${m.numeroRemision||''} · ${m.fecha?new Date(m.fecha).toLocaleDateString('es-CO'):''}</div>
-      <table>
+      <div class="sub">${m.numeroRemision||''} · ${fechaTexto}${lineas.length>1?` · ${lineas.length} insumos`:''}</div>
+      <table class="cabecera">
         <tr><th>Orden de producción</th><td>${orden.numero} — ${orden.producto?.nombre||''}</td></tr>
         <tr><th>Joyero</th><td>${orden.joyero?.nombre||''}</td></tr>
-        <tr><th>Insumo</th><td>${d.piedra?.codigo||''} — ${d.piedra?.nombre||''}</td></tr>
-        <tr><th>Lote de origen</th><td>${m.compraInsumo?.numero||'—'}</td></tr>
-        <tr><th>Tipo de envío</th><td>${LABEL_MOVIMIENTO[m.tipoMovimiento]||m.tipoMovimiento}</td></tr>
-        <tr><th>Cantidad enviada</th><td>${Number(m.cantidad).toLocaleString('es-CO',{maximumFractionDigits:4})} ${unidad}</td></tr>
-        <tr><th>Valor de referencia</th><td>${fmt(m.valor)}</td></tr>
-        ${m.nota?`<tr><th>Nota</th><td>${m.nota}</td></tr>`:''}
+      </table>
+      <table class="lineas">
+        <thead><tr><th>Insumo</th><th>Lote de origen</th><th>Tipo</th><th>Cantidad</th><th>Valor</th></tr></thead>
+        <tbody>${filasHtml}</tbody>
+        <tfoot><tr><td colspan="4">Total</td><td>${fmt(totalValor)}</td></tr></tfoot>
       </table>
       <div class="firmas">
         <div>Entregado por (Río Rayo)</div>
@@ -621,21 +713,44 @@ function DetallesPanel({ orden, refetch }) {
           rechaza nuevos envíos — no tiene sentido seguir sugiriéndolos. */}
       {sugerencias.length > 0 && estadoCodigo !== 'CANC' && (
         <div className="border rounded p-2 bg-white" style={{fontSize:12}}>
-          <div className="fw-bold mb-2" style={{fontSize:12}}>
-            📋 Insumos del BOM pendientes de enviar (calculado: {orden.cantidadProgramada} × receta)
+          <div className="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
+            <div className="fw-bold" style={{fontSize:12}}>
+              📋 Insumos del BOM pendientes de enviar (calculado: {orden.cantidadProgramada} × receta)
+            </div>
+            {/* ── NUEVO — si se van a entregar varios insumos juntos en un
+                solo paquete físico, deben quedar bajo UNA sola remisión —
+                marque el checkbox de cada uno (con su lote ya elegido) y
+                confírmelos juntos aquí. Si envía uno solo, puede seguir
+                usando el botón "Confirmar envío" de esa fila normalmente. */}
+            {filasParaLote.length > 0 && (
+              <button className="btn btn-success btn-sm" onClick={handleConfirmarLote}>
+                📦 Confirmar envío de {filasParaLote.length} seleccionados (1 remisión)
+              </button>
+            )}
           </div>
           <table className="table table-sm align-middle mb-0" style={{fontSize:11}}>
             <thead>
               <tr className="table-dark">
-                <th>Insumo</th><th>Necesario</th><th>Desperdicio sugerido</th><th>Lote</th><th>A enviar</th><th>Valor</th><th></th>
+                <th></th><th>Insumo</th><th>Necesario</th><th>Desperdicio sugerido</th><th>Lote</th><th>A enviar</th><th>Valor</th><th></th>
               </tr>
             </thead>
             <tbody>
               {sugerencias.map(bom => (
-                <SugerenciaRow key={bom.id} bom={bom} cantidadProgramada={orden.cantidadProgramada} onConfirmar={handleConfirmarSugerencia} />
+                <SugerenciaRow key={bom.id} bom={bom} cantidadProgramada={orden.cantidadProgramada}
+                  onConfirmar={handleConfirmarSugerencia}
+                  checked={seleccionadas.has(bom.id)}
+                  onToggleCheck={handleToggleCheck}
+                  onEstadoChange={handleEstadoFila} />
               ))}
             </tbody>
           </table>
+          {sugerencias.length > 1 && (
+            <div className="text-muted mt-2" style={{fontSize:10}}>
+              💡 Si va a entregar varios insumos juntos al joyero en un solo paquete, elija el lote de cada uno,
+              marque sus checkboxes y use "Confirmar envío de seleccionados" — así todos quedan bajo una sola
+              remisión imprimible en vez de una por insumo.
+            </div>
+          )}
         </div>
       )}
       {sugerencias.length === 0 && bomDelProducto.length > 0 && (orden.detalles||[]).length > 0 && (
