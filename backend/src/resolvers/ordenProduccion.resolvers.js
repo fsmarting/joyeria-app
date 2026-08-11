@@ -417,6 +417,90 @@ export default {
       });
     },
 
+    // ── NUEVO — confirmar varios insumos del BOM en un solo envío ───
+    // Contraparte "por lote" de agregarDetalleOrden. Deber ser acordado
+    // con el usuario: si varios insumos se entregan juntos al joyero en
+    // un solo paquete físico, deben compartir UNA sola remisión — antes,
+    // cada "Confirmar envío" generaba su propio número aunque todo
+    // saliera el mismo día en la misma bolsa.
+    agregarDetallesOrdenLote: async (_, { input }, { prisma, user }) => {
+      requireAuth(user);
+      const { ordenProduccionId, detalles } = input;
+      if (!detalles?.length) throw new Error('Debe incluir al menos un insumo');
+
+      const orden = await prisma.ordenProduccion.findUnique({
+        where: { id: Number(ordenProduccionId) },
+        include: { estado: true },
+      });
+      if (!orden) throw new Error('Orden no existe');
+      validarEmpresa(orden.empresaId, user.empresaActualId);
+      if (orden.estado?.codigo === 'CANC') throw new Error('Esta orden está cancelada — no se pueden enviar insumos');
+
+      // Validar stock de cada lote ANTES de mover nada — evita dejar
+      // movimientos parciales si uno de los lotes no alcanza a mitad
+      // del lote de envíos.
+      for (const d of detalles) {
+        const compra = await prisma.compraInsumo.findUnique({ where: { id: Number(d.compraInsumoId) } });
+        if (!compra) throw new Error(`El lote de compra ${d.compraInsumoId} no existe`);
+        if (Number(compra.cantidadDisponible) < Number(d.cantidadEnviada))
+          throw new Error(`Stock insuficiente en el lote ${compra.numero}. Disponible: ${compra.cantidadDisponible}`);
+      }
+
+      const pendienteId = await obtenerEstadoOrdenId(prisma, orden.empresaId, 'PEND');
+      const procesoId   = await obtenerEstadoOrdenId(prisma, orden.empresaId, 'PROC');
+      // ── UNA sola remisión para todo el lote (se genera una vez, se
+      // reutiliza en cada línea) — esto es justo lo que lo diferencia
+      // de llamar agregarDetalleOrden varias veces seguidas.
+      const numeroRemisionEnvio = await generarNumeroRemisionEnvio(prisma, orden.id, orden.numero);
+
+      const idsCreados = await prisma.$transaction(async (tx) => {
+        const ids = [];
+        for (const d of detalles) {
+          await tx.compraInsumo.update({ where: { id: Number(d.compraInsumoId) }, data: { cantidadDisponible: { decrement: Number(d.cantidadEnviada) } } });
+
+          const detalle = await tx.detalleOrdenProduccion.create({
+            data: {
+              ordenProduccionId: Number(ordenProduccionId),
+              compraInsumoId: Number(d.compraInsumoId),
+              piedraId: Number(d.piedraId),
+              cantidad: Number(d.cantidad),
+              costoUnitario: Number(d.costoUnitario),
+              costoTotal: Number(d.costoTotal),
+              desperdicio: d.desperdicio ?? 0,
+              cantidadEnviada: Number(d.cantidadEnviada),
+              valorEnviado: Number(d.valorEnviado),
+              cantidadDevuelta: 0,
+              valorDevuelto: 0,
+              usu_creacion: user.codigo,
+            },
+          });
+
+          await tx.movimientoInsumoOrden.create({
+            data: {
+              detalleOrdenProduccionId: detalle.id,
+              compraInsumoId: Number(d.compraInsumoId),
+              tipoMovimiento: 'INICIAL',
+              cantidad: Number(d.cantidadEnviada),
+              valor: Number(d.valorEnviado),
+              numeroRemision: numeroRemisionEnvio,
+              usu_creacion: user.codigo,
+            },
+          });
+
+          ids.push(detalle.id);
+        }
+
+        await tx.ordenProduccion.updateMany({
+          where: { id: orden.id, estadoId: pendienteId },
+          data: { estadoId: procesoId },
+        });
+
+        return ids;
+      });
+
+      return prisma.detalleOrdenProduccion.findMany({ where: { id: { in: idsCreados } }, include: incluirDetalle });
+    },
+
     // ── NUEVO — reemplaza a registrarDevolucion ────────────────────
     // Un solo mutation para envío adicional (al joyero le faltó
     // insumo) y para devolución (sobrante que regresa). Ambos quedan

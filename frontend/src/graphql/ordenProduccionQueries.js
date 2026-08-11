@@ -103,6 +103,14 @@ export const CONCILIAR_ENTREGA = gql`
 
 export const AGREGAR_DETALLE = gql`mutation AgregarDetalleOrden($input: DetalleOrdenInput!) { agregarDetalleOrden(input: $input) { ${DETALLE_FIELDS} } }`;
 
+// ── NUEVO — confirma varios insumos de una vez bajo UNA sola remisión
+// de envío (ver comentario en ordenProduccion.resolvers.js).
+export const AGREGAR_DETALLES_LOTE = gql`
+  mutation AgregarDetallesOrdenLote($input: AgregarDetallesLoteInput!) {
+    agregarDetallesOrdenLote(input: $input) { ${DETALLE_FIELDS} }
+  }
+`;
+
 // ── NUEVO — reemplaza a REGISTRAR_DEVOLUCION ──────────────────────
 // Un solo mutation para envío adicional (tipoMovimiento: "ADICIONAL")
 // y devolución (tipoMovimiento: "DEVOLUCION").

@@ -156,6 +156,26 @@ export default /* GraphQL */ `
     valorEnviado: Float!
   }
   # ── NUEVO ─────────────────────────────────────────────────────
+  # Confirmar varios insumos del BOM de una sola vez (checkboxes en
+  # "Insumos del BOM pendientes de enviar") — si físicamente se
+  # entregan juntos al joyero en un solo paquete, deben quedar bajo
+  # UNA sola remisión de envío, no una por insumo. Cada elemento de
+  # "detalles" NO repite ordenProduccionId (va una sola vez arriba).
+  input DetalleOrdenLoteItemInput {
+    compraInsumoId: Int!
+    piedraId: Int!
+    cantidad: Float!
+    costoUnitario: Float!
+    costoTotal: Float!
+    desperdicio: Float
+    cantidadEnviada: Float!
+    valorEnviado: Float!
+  }
+  input AgregarDetallesLoteInput {
+    ordenProduccionId: Int!
+    detalles: [DetalleOrdenLoteItemInput!]!
+  }
+  # ── NUEVO ─────────────────────────────────────────────────────
   # Reemplaza a DetalleDevolucionInput / registrarDevolucion. Sirve
   # tanto para un envío adicional (al joyero le faltó insumo) como
   # para una devolución (sobrante que el joyero regresa).
@@ -209,6 +229,9 @@ export default /* GraphQL */ `
     registrarEntregaOrden(input: EntregaOrdenInput!): OrdenProduccion!
     conciliarEntrega(input: ConciliarEntregaInput!): EntregaOrden!
     agregarDetalleOrden(input: DetalleOrdenInput!): DetalleOrdenProduccion!
+    # ── NUEVO — confirma varios insumos del BOM en un solo envío físico,
+    # bajo UNA sola remisión (ver AgregarDetallesLoteInput arriba).
+    agregarDetallesOrdenLote(input: AgregarDetallesLoteInput!): [DetalleOrdenProduccion!]!
     registrarMovimientoInsumo(
       input: MovimientoInsumoInput!
     ): DetalleOrdenProduccion!
