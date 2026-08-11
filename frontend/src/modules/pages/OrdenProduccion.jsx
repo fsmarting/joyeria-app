@@ -321,6 +321,18 @@ function SugerenciaRow({ bom, cantidadProgramada, onConfirmar, checked, onToggle
         <input type="checkbox" checked={checked} disabled={!valido}
           title={valido ? 'Incluir en el envío por lote' : 'Elija un lote con stock suficiente para poder incluirlo'}
           onChange={()=>onToggleCheck(bom.id)} />
+        {/* 🩹 antes el checkbox simplemente aparecía "trabado" sin
+            explicación — el usuario no tenía forma de saber si faltaba
+            elegir lote o si el lote elegido no alcanzaba en cantidad.
+            Ahora se ve el motivo exacto debajo del checkbox. */}
+        {!compraSelId && (
+          <div className="text-muted" style={{fontSize:9, maxWidth:70}}>Elija lote</div>
+        )}
+        {!!compraSelId && !stockAlcanza && (
+          <div className="text-danger" style={{fontSize:9, maxWidth:75}}>
+            Sin stock: disp. {fmtQ(compraActual?.cantidadDisponible, unidad)}
+          </div>
+        )}
       </td>
       <td>
         <strong>{bom.piedra?.codigo}</strong> {bom.piedra?.nombre}
@@ -354,7 +366,9 @@ function SugerenciaRow({ bom, cantidadProgramada, onConfirmar, checked, onToggle
         </select>
       </td>
       <td>
-        <input type="number" className="form-control form-control-sm" style={{width:90}}
+        <input type="number"
+          className={`form-control form-control-sm ${(!!compraSelId && !stockAlcanza) ? 'is-invalid' : ''}`}
+          style={{width:90}}
           value={cantOverride !== null ? cantOverride : cantidadAEnviar.toFixed(4)}
           onChange={e=>setCantOverride(e.target.value)} />
       </td>
