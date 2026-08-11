@@ -114,6 +114,11 @@ export const camposOrdenProduccion = [
     },
   },
   // ── Cantidad programada ──────────────────────────────────────────
+  // ── NUEVO — deber ser acordado con el usuario: una vez la orden ya
+  // tiene algún insumo enviado (DetalleOrdenProduccion), el material
+  // se compró/envió pensando en esta cantidad — cambiarla después
+  // borraría esa historia. Se bloquea de solo lectura en ese caso;
+  // antes de enviar el primer insumo se puede seguir editando normal.
   {
     nombre: "cantidadProgramada",
     etiqueta: "Cant. Programada",
@@ -122,6 +127,7 @@ export const camposOrdenProduccion = [
     ancho: "120px",
     ordenListado: 5,
     valorDefecto: 1,
+    readOnly: (form, registro) => (registro?.detalles?.length || 0) > 0,
   },
   // ── Costo estándar unitario (solo listado) ───────────────────────
   {

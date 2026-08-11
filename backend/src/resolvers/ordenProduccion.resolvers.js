@@ -270,9 +270,21 @@ export default {
       // dejarlo editar a mano (rompería la trazabilidad con las
       // remisiones, que ya usan este número como parte del suyo).
       const { id, version, estadoId, numero, ...data } = input;
-      const original = await prisma.ordenProduccion.findUnique({ where: { id: Number(id) } });
+      const original = await prisma.ordenProduccion.findUnique({
+        where: { id: Number(id) },
+        include: { detalles: { where: { deletedAt: null }, select: { id: true } } },
+      });
       if (!original) throw new Error('Orden no existe');
       validarEmpresa(original.empresaId, user.empresaActualId);
+      // ── NUEVO — deber ser acordado con el usuario: cantidadProgramada
+      // solo se puede modificar mientras la orden todavía no tiene
+      // ningún insumo enviado (sin DetalleOrdenProduccion). Una vez se
+      // confirmó el primer insumo del BOM, el material ya se compró/
+      // envió pensando en esa cantidad — cambiarla después borraría esa
+      // historia y descuadraría el costo total estándar (costo unitario
+      // × cantidad programada). El formulario ya la deja de solo
+      // lectura en ese caso; esto es el respaldo del lado del servidor.
+      if (original.detalles.length > 0) data.cantidadProgramada = original.cantidadProgramada;
       const costoTotalEstandard = Number(original.costoUnitarioEstandard) * Number(data.cantidadProgramada);
       const result = await prisma.ordenProduccion.updateMany({
         where: { id: Number(id), version: Number(version) },
@@ -693,6 +705,60 @@ export default {
         if (result.count === 0) throw new Error('Modificado por otro usuario');
       });
 
+      return prisma.ordenProduccion.findUnique({ where: { id: orden.id }, include: incluirOrden });
+    },
+
+    // ── NUEVO — cerrar una orden con entrega parcial ─────────────────
+    // Deber ser acordado con el usuario: cuando el joyero ya entregó
+    // piezas pero las que faltan no van a llegar (ej. el material de la
+    // última pieza llegó con un problema de calidad y no se puede
+    // reponer), NO se debe bajar cantidadProgramada — eso borraría la
+    // historia real de para cuántas piezas se compró/envió material.
+    // En vez de eso, esta acción solo cierra el ciclo de vida de la
+    // orden pasándola a "Entregada", dejando cantidadProgramada y
+    // cantidadEntregada tal cual quedaron (ej. 5 programadas, 4
+    // entregadas) — la diferencia queda visible como registro honesto
+    // de lo que pasó. No toca insumos para nada: qué pasa con el
+    // material del faltante (devolución, reconocimiento de valor al
+    // joyero, o pérdida absorbida en el costo de lo sí entregado) es
+    // una decisión de negocio entre la joyería y el joyero, por fuera
+    // del sistema — si aplica una devolución, se registra aparte con
+    // el flujo normal de Devolución en la fila de ese insumo.
+    cerrarOrdenProduccion: async (_, { id, version, motivo }, { prisma, user }) => {
+      requireAuth(user);
+      if (!motivo?.trim()) throw new Error('El motivo del cierre es obligatorio');
+
+      const orden = await prisma.ordenProduccion.findUnique({
+        where: { id: Number(id) },
+        include: { estado: true },
+      });
+      if (!orden) throw new Error('Orden no existe');
+      validarEmpresa(orden.empresaId, user.empresaActualId);
+      if (orden.estado?.codigo === 'CANC') throw new Error('Esta orden ya está cancelada');
+      if (orden.estado?.codigo === 'ENTR') throw new Error('Esta orden ya está entregada');
+      if (Number(orden.cantidadEntregada) === 0)
+        throw new Error('Esta orden no tiene piezas entregadas — use "Cancelar orden" en vez de cerrarla');
+      if (Number(orden.cantidadEntregada) >= Number(orden.cantidadProgramada))
+        throw new Error('Esta orden ya completó todas las piezas programadas');
+
+      const entregadaId = await obtenerEstadoOrdenId(prisma, orden.empresaId, 'ENTR');
+      const motivoTrim  = motivo.trim();
+      const fechaTexto  = new Date().toLocaleDateString('es-CO');
+      const notaNueva   = orden.nota
+        ? `${orden.nota}\n[CERRADA CON ENTREGA PARCIAL ${fechaTexto}] ${motivoTrim}`
+        : `[CERRADA CON ENTREGA PARCIAL ${fechaTexto}] ${motivoTrim}`;
+
+      const result = await prisma.ordenProduccion.updateMany({
+        where: { id: orden.id, version: Number(version) },
+        data: {
+          estadoId: entregadaId,
+          fechaEntrega: new Date(),
+          nota: notaNueva.length > 500 ? notaNueva.slice(0, 500) : notaNueva,
+          version: { increment: 1 },
+          usu_actualizacion: user.codigo,
+        },
+      });
+      if (result.count === 0) throw new Error('Modificado por otro usuario');
       return prisma.ordenProduccion.findUnique({ where: { id: orden.id }, include: incluirOrden });
     },
 

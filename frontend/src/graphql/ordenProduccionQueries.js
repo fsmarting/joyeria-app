@@ -86,6 +86,15 @@ export const CANCELAR_ORDEN = gql`
   }
 `;
 
+// ── NUEVO — cerrar orden con entrega parcial (piezas restantes no van
+// a llegar, ej. problema de calidad del material). No toca
+// cantidadProgramada/cantidadEntregada, solo cierra el estado.
+export const CERRAR_ORDEN = gql`
+  mutation CerrarOrdenProduccion($id: Int!, $version: Int!, $motivo: String!) {
+    cerrarOrdenProduccion(id: $id, version: $version, motivo: $motivo) { ${ORDEN_FIELDS} }
+  }
+`;
+
 export const REGISTRAR_ENTREGA = gql`
   mutation RegistrarEntregaOrden($input: EntregaOrdenInput!) {
     registrarEntregaOrden(input: $input) {

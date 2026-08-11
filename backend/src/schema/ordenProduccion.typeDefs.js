@@ -231,6 +231,13 @@ export default /* GraphQL */ `
     # historial). motivo es obligatorio — queda en la nota de la orden
     # y en la nota de cada devolución automática.
     cancelarOrdenProduccion(id: Int!, version: Int!, motivo: String!): OrdenProduccion!
+    # ── NUEVO ─────────────────────────────────────────────────────
+    # Cierra una orden que ya tiene piezas entregadas pero las
+    # restantes no van a llegar (ej. problema de calidad del material
+    # de la última pieza). No cambia cantidadProgramada ni
+    # cantidadEntregada — solo pasa el estado a "Entregada" para
+    # cerrar el ciclo, dejando la diferencia visible como historia.
+    cerrarOrdenProduccion(id: Int!, version: Int!, motivo: String!): OrdenProduccion!
     registrarEntregaOrden(input: EntregaOrdenInput!): OrdenProduccion!
     conciliarEntrega(input: ConciliarEntregaInput!): EntregaOrden!
     agregarDetalleOrden(input: DetalleOrdenInput!): DetalleOrdenProduccion!

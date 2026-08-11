@@ -5,7 +5,7 @@ import EntidadGenerica from '../../components/EntidadGenerica.jsx';
 import { camposOrdenProduccion } from '../../data/camposOrdenProduccion.jsx';
 import {
   GET_ORDENES_CURSOR, CREAR_ORDEN, ACTUALIZAR_ORDEN, ELIMINAR_ORDEN,
-  REGISTRAR_ENTREGA, CONCILIAR_ENTREGA, CANCELAR_ORDEN,
+  REGISTRAR_ENTREGA, CONCILIAR_ENTREGA, CANCELAR_ORDEN, CERRAR_ORDEN,
   AGREGAR_DETALLE, AGREGAR_DETALLES_LOTE, REGISTRAR_MOVIMIENTO_INSUMO, ELIMINAR_DETALLE,
 } from '../../graphql/ordenProduccionQueries.js';
 import { GET_COMPRAS_POR_PIEDRA } from '../../graphql/compraInsumoQueries.js';
@@ -392,6 +392,7 @@ function DetallesPanel({ orden, refetch }) {
   const [registrarMovimiento] = useMutation(REGISTRAR_MOVIMIENTO_INSUMO);
   const [eliminar]          = useMutation(ELIMINAR_DETALLE);
   const [cancelarOrden]     = useMutation(CANCELAR_ORDEN);
+  const [cerrarOrden]       = useMutation(CERRAR_ORDEN);
 
   // ── NUEVO — confirmar varios insumos juntos bajo una sola remisión ──
   const [estadoFilas, setEstadoFilas]     = useState({}); // { [bomId]: {valido, input} }, reportado por cada SugerenciaRow
@@ -413,6 +414,29 @@ function DetallesPanel({ orden, refetch }) {
       await cancelarOrden({ variables: { id: orden.id, version: orden.version, motivo: motivoCancelacion.trim() } });
       toast.success('Orden cancelada' + (tieneInsumosPendientesDevolver ? ' — insumos devueltos al inventario' : ''));
       setCancelando(false); setMotivoCancelacion('');
+      await refetch();
+    } catch(e) { toast.error(e.message); }
+  };
+
+  // ── NUEVO — cerrar orden con entrega parcial ──────────────────────
+  // Distinto de cancelar: aquí ya hay piezas entregadas y las que
+  // faltan no van a llegar (ej. problema de calidad del material de la
+  // última pieza). No toca cantidadProgramada ni cantidadEntregada —
+  // deja la historia real (se programaron 5, se entregaron 4) y solo
+  // cierra el estado a "Entregada". Lo que pase con el insumo del
+  // faltante lo resuelve la joyería con el joyero por fuera del
+  // sistema (o con una Devolución normal si aplica).
+  const [cerrando, setCerrando]       = useState(false);
+  const [motivoCierre, setMotivoCierre] = useState('');
+  const puedeCerrarParcial = Number(orden.cantidadEntregada) > 0 && Number(orden.cantidadEntregada) < Number(orden.cantidadProgramada) && estadoCodigo !== 'CANC' && estadoCodigo !== 'ENTR';
+
+  const handleCerrarOrden = async () => {
+    if (!motivoCierre.trim()) return toast.warning('Indique el motivo del cierre');
+    if (!window.confirm('¿Cerrar esta orden sin completar las piezas programadas? Esta acción no se puede deshacer.')) return;
+    try {
+      await cerrarOrden({ variables: { id: orden.id, version: orden.version, motivo: motivoCierre.trim() } });
+      toast.success('Orden cerrada con entrega parcial');
+      setCerrando(false); setMotivoCierre('');
       await refetch();
     } catch(e) { toast.error(e.message); }
   };
@@ -604,6 +628,10 @@ function DetallesPanel({ orden, refetch }) {
         {puedeCancelar && !cancelando && (
           <button className="btn btn-outline-danger btn-sm ms-auto" onClick={()=>setCancelando(true)}>🚫 Cancelar orden</button>
         )}
+        {/* ── NUEVO — Cerrar orden con entrega parcial ── */}
+        {puedeCerrarParcial && !cerrando && (
+          <button className={`btn btn-outline-warning btn-sm ${puedeCancelar ? '' : 'ms-auto'}`} onClick={()=>setCerrando(true)}>🔒 Cerrar orden (entrega parcial)</button>
+        )}
       </div>
 
       {/* ── NUEVO — formulario de cancelación ── */}
@@ -624,6 +652,28 @@ function DetallesPanel({ orden, refetch }) {
             </div>
             <button className="btn btn-danger btn-sm" onClick={handleCancelarOrden}>Confirmar cancelación</button>
             <button className="btn btn-outline-secondary btn-sm" onClick={()=>{setCancelando(false); setMotivoCancelacion('');}}>Cerrar</button>
+          </div>
+        </div>
+      )}
+
+      {/* ── NUEVO — formulario de cierre con entrega parcial ── */}
+      {cerrando && (
+        <div className="border border-warning rounded p-2 bg-white mb-3" style={{fontSize:12}}>
+          <div className="fw-bold text-warning mb-2">Cerrar orden {orden.numero} con entrega parcial</div>
+          <div className="alert alert-secondary py-1 px-2 mb-2" style={{fontSize:11}}>
+            Quedará con {orden.cantidadEntregada} de {orden.cantidadProgramada} piezas entregadas — la cantidad
+            programada NO se modifica (queda como historia de para cuánto se envió material). Lo que pase con el
+            insumo del faltante (devolución, reconocimiento de valor, o pérdida) se resuelve aparte con el joyero.
+          </div>
+          <div className="d-flex flex-wrap gap-2 align-items-end">
+            <div style={{flex:1, minWidth:240}}>
+              <label className="form-label mb-0">Motivo (obligatorio)</label>
+              <input type="text" className="form-control form-control-sm" maxLength={200}
+                placeholder="Ej: el material del 5to anillo llegó con defecto, joyero no puede completarlo"
+                value={motivoCierre} onChange={e=>setMotivoCierre(e.target.value)}/>
+            </div>
+            <button className="btn btn-warning btn-sm" onClick={handleCerrarOrden}>Confirmar cierre</button>
+            <button className="btn btn-outline-secondary btn-sm" onClick={()=>{setCerrando(false); setMotivoCierre('');}}>Cerrar</button>
           </div>
         </div>
       )}
