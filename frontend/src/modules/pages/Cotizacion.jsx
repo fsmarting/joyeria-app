@@ -226,13 +226,15 @@ function ItemsPanel({ cotizacion, refetch }) {
     }
   };
 
+  // ── CAMBIO — ya no hay restricción de "1 solo producto por cotización".
+  // convertirEnVenta crea una Venta por cada línea y devuelve la lista.
   const handleConvertir = async () => {
     if (!medioPagoId) return toast.warning("Seleccione el medio de pago");
     if (!cotizacion.clienteId)
       return toast.error("La cotización necesita una clienta");
     try {
       setConvirtiendo(true);
-      await convertir({
+      const { data } = await convertir({
         variables: {
           input: {
             cotizacionId: cotizacion.id,
@@ -240,7 +242,12 @@ function ItemsPanel({ cotizacion, refetch }) {
           },
         },
       });
-      toast.success("¡Cotización convertida en venta!");
+      const n = data?.convertirEnVenta?.length ?? 0;
+      toast.success(
+        n > 1
+          ? `¡Cotización convertida en ${n} ventas!`
+          : "¡Cotización convertida en venta!",
+      );
       await refetch();
     } catch (e) {
       toast.error(e.message);
@@ -387,7 +394,10 @@ function ItemsPanel({ cotizacion, refetch }) {
 
       {esConvertible && items.length > 0 && (
         <div className="border rounded p-2 bg-white" style={{ fontSize: 12 }}>
-          <div className="fw-bold mb-2">💰 Convertir en venta</div>
+          <div className="fw-bold mb-2">
+            💰 Convertir en venta
+            {items.length > 1 && ` (${items.length} productos)`}
+          </div>
           <div className="d-flex gap-2 align-items-end flex-wrap">
             <div>
               <label className="form-label mb-0">Medio de pago</label>
@@ -410,18 +420,13 @@ function ItemsPanel({ cotizacion, refetch }) {
               onClick={handleConvertir}
               disabled={convirtiendo}
             >
-              {convirtiendo ? "⏳ Procesando..." : "✓ Convertir en venta"}
+              {convirtiendo
+                ? "⏳ Procesando..."
+                : items.length > 1
+                  ? `✓ Convertir ${items.length} productos en venta`
+                  : "✓ Convertir en venta"}
             </button>
           </div>
-          {items.length > 1 && (
-            <div
-              className="alert alert-warning py-1 px-2 mt-2 mb-0"
-              style={{ fontSize: 11 }}
-            >
-              ⚠ Con múltiples productos solo se convierte el primero. Cree las
-              demás ventas manualmente.
-            </div>
-          )}
         </div>
       )}
 

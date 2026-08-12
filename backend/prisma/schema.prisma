@@ -362,7 +362,6 @@ model DetalleOrdenProduccion {
   @@index([compraInsumoId])
 }
 
-
 // ── NUEVO ─────────────────────────────────────────────────────────
 // Historial de todo lo que se mueve para un insumo de una orden:
 // el envío inicial (creado junto con el DetalleOrdenProduccion), los
@@ -403,7 +402,14 @@ model Venta {
   productoId Int
   vendedoraId Int?
   muestrarioItemId Int?
-  cotizacionId Int?
+  // ── CAMBIO — antes apuntaba a Cotizacion (la cabeza). Ahora apunta a
+  // CotizacionItem (la línea), igual que ya se hacía con muestrarioItemId.
+  // Esto es lo que permite convertir cotizaciones con varios productos.
+  cotizacionItemId Int?
+  // ── NUEVO — antes cada fila de Venta representaba siempre 1 unidad.
+  // precioVenta pasa a ser el precio POR UNIDAD; el total de la venta
+  // es precioVenta * cantidad.
+  cantidad Int @default(1)
   fecha DateTime @default(now())
   precioVenta Decimal @db.Decimal(12,2)
   medioPagoId Int
@@ -426,7 +432,7 @@ model Venta {
   repartos RepartoUtilidad[] @relation("RepartoUtilidad_Venta")
   canal   Grupo? @relation("Venta_Canal", fields: [canalId], references: [id])
   muestrarioItem MuestrarioItem? @relation("Venta_MuestrarioItem", fields: [muestrarioItemId], references: [id])
-  cotizacion   Cotizacion? @relation("Venta_Cotizacion", fields: [cotizacionId], references: [id])
+  cotizacionItem CotizacionItem? @relation("Venta_CotizacionItem", fields: [cotizacionItemId], references: [id])
 
   @@index([empresaId, fecha])
   @@index([clienteId])
@@ -580,7 +586,8 @@ model Cotizacion {
   vendedora    Usuario?     @relation("Cotizacion_Vendedora",     fields: [vendedoraId],    references: [id])
   estado       Grupo        @relation("Cotizacion_Estado",        fields: [estadoId],       references: [id])
   items        CotizacionItem[] @relation("CotizacionItem_Cotizacion")
-  ventas Venta[] @relation("Venta_Cotizacion")
+  // ── CAMBIO — la relación a Venta ahora vive en CotizacionItem (la línea),
+  // no aquí en la cabeza. Ver CotizacionItem.ventas.
 
   @@unique([empresaId, numero])
   @@index([empresaId])
@@ -600,6 +607,9 @@ model CotizacionItem {
 
   cotizacion Cotizacion @relation("CotizacionItem_Cotizacion", fields: [cotizacionId], references: [id], onDelete: Cascade)
   producto   Producto   @relation("CotizacionItem_Producto",   fields: [productoId],   references: [id])
+  // ── NUEVO — antes Venta apuntaba a Cotizacion (la cabeza); ahora apunta
+  // a la línea específica que se vendió.
+  ventas     Venta[]    @relation("Venta_CotizacionItem")
 
   @@index([cotizacionId])
 }

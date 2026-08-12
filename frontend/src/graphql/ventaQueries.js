@@ -1,16 +1,16 @@
 import { gql } from "@apollo/client";
 
 const VENTA_FIELDS = `
-  id empresaId clienteId productoId vendedoraId cotizacionId fecha
+  id empresaId clienteId productoId vendedoraId cotizacionItemId cantidad fecha
   precioVenta medioPagoId porcentajeComision valorComision estadoId version
   origenLabel
-  cliente    { id nombre telefono }
-  producto   { id referencia nombre }
-  vendedora  { id nombre }
-  medioPago  { id codigo nombre }
-  estado     { id codigo nombre }
-  cotizacion { id numero }
-  repartos   { id socioId porcentaje valor socio { id nombre } }
+  cliente        { id nombre telefono }
+  producto       { id referencia nombre }
+  vendedora      { id nombre }
+  medioPago      { id codigo nombre }
+  estado         { id codigo nombre }
+  cotizacionItem { id cotizacionId cotizacion { id numero } }
+  repartos       { id socioId porcentaje valor socio { id nombre } }
 `;
 
 export const GET_VENTAS_CURSOR = gql`
@@ -43,6 +43,20 @@ export const ACTUALIZAR_VENTA = gql`
 export const ELIMINAR_VENTA = gql`
   mutation EliminarVenta($id: Int!) {
     eliminarVenta(id: $id)
+  }
+`;
+
+// ── NUEVO — anular con motivo, restaura stock automáticamente.
+export const ANULAR_VENTA = gql`
+  mutation AnularVenta($id: Int!, $version: Int!, $motivo: String!) {
+    anularVenta(id: $id, version: $version, motivo: $motivo) {
+      id
+      version
+      estado {
+        codigo
+        nombre
+      }
+    }
   }
 `;
 

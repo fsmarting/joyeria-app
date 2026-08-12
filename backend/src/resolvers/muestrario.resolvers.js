@@ -14,17 +14,21 @@ const incMuestrario = {
   items: { where: { deletedAt: null }, include: incItem, orderBy: { id: 'asc' } },
 };
 
+// ── CAMBIO — antes "vendida" == número de filas en Venta (siempre 1 c/u).
+// Ahora una venta puede cubrir varias unidades, así que sumamos cantidad.
+const unidadesVendidas = (item) => (item.ventas || []).reduce((s, v) => s + v.cantidad, 0);
+
 export default {
   Muestrario: {
     fechaSalida: (m) => m.fechaSalida ? new Date(m.fechaSalida).toISOString() : null,
     fechaCierre: (m) => m.fechaCierre ? new Date(m.fechaCierre).toISOString() : null,
     totalPiezas:            (m) => (m.items||[]).reduce((s,i)=>s+i.cantidadEntregada,0),
-    totalVendidas:          (m) => (m.items||[]).reduce((s,i)=>s+(i.ventas?.length??0),0),
-    totalEfectivoPendiente: (m) => (m.items||[]).flatMap(i=>i.ventas||[]).filter(v=>v.estado?.codigo==='ENPR').reduce((s,v)=>s+Number(v.precioVenta),0),
+    totalVendidas:          (m) => (m.items||[]).reduce((s,i)=>s+unidadesVendidas(i),0),
+    totalEfectivoPendiente: (m) => (m.items||[]).flatMap(i=>i.ventas||[]).filter(v=>v.estado?.codigo==='ENPR').reduce((s,v)=>s+Number(v.precioVenta)*Number(v.cantidad),0),
   },
   MuestrarioItem: {
-    cantidadVendida:    (i) => (i.ventas||[]).length,
-    cantidadDisponible: (i) => i.cantidadEntregada - (i.ventas||[]).length - i.cantidadDevuelta,
+    cantidadVendida:    (i) => unidadesVendidas(i),
+    cantidadDisponible: (i) => i.cantidadEntregada - unidadesVendidas(i) - i.cantidadDevuelta,
   },
 
   Query: {
@@ -101,6 +105,8 @@ export default {
     registrarVentaMuestrario: async (_, { input }, { prisma, user }) => {
       requireAuth(user);
       const { muestrarioItemId, clienteId, precioVenta, medioPagoId, vendedoraId, empresaId } = input;
+      const cantidad = Number(input.cantidad ?? 1);
+      if (cantidad <= 0) throw new Error('La cantidad debe ser mayor a 0');
       const item = await prisma.muestrarioItem.findUnique({
         where: { id: muestrarioItemId },
         include: { muestrario: true, ventas: { where: { deletedAt: null, estado: { codigo: { not: 'ANUL' } } } } },
@@ -108,13 +114,13 @@ export default {
       if (!item) throw new Error('Item no existe');
       validarEmpresa(item.muestrario.empresaId, user.empresaActualId);
       if (item.muestrario.estado !== 'ACTIVO') throw new Error('El muestrario ya está liquidado');
-      const disponible = item.cantidadEntregada - item.ventas.length - item.cantidadDevuelta;
-      if (disponible <= 0) throw new Error('No quedan unidades disponibles en el muestrario');
+      const disponible = item.cantidadEntregada - unidadesVendidas(item) - item.cantidadDevuelta;
+      if (cantidad > disponible) throw new Error(`No quedan suficientes unidades disponibles en el muestrario. Disponible: ${disponible}`);
 
       const ue         = await prisma.usuarioEmpresa.findFirst({ where: { usuarioId: Number(vendedoraId), empresaId: Number(empresaId), deletedAt: null } });
       const medioPago  = await prisma.grupo.findUnique({ where: { id: Number(medioPagoId) } });
       const porcentaje = medioPago?.codigo === 'TARJ' ? Number(ue?.comisionTarjeta??0) : Number(ue?.comisionEfectivo??0);
-      const valorComision = (Number(precioVenta) * porcentaje) / 100;
+      const valorComision = (Number(precioVenta) * cantidad * porcentaje) / 100;
 
       const esTarjeta  = medioPago?.codigo === 'TARJ';
       const estadoCod  = esTarjeta ? 'CONF' : 'ENPR';
@@ -125,7 +131,7 @@ export default {
         data: {
           empresaId: Number(empresaId), clienteId: Number(clienteId),
           productoId: item.productoId, vendedoraId: Number(vendedoraId),
-          muestrarioItemId, fecha: new Date(),
+          muestrarioItemId, cantidad, fecha: new Date(),
           precioVenta: Number(precioVenta), medioPagoId: Number(medioPagoId),
           porcentajeComision: porcentaje, valorComision, estadoId: estadoGrupo.id,
           usu_creacion: user.codigo,
@@ -147,7 +153,7 @@ export default {
 
     liquidarMuestrario: async (_, { input }, { prisma, user }) => {
       requireAuth(user);
-      const { muestrarioId, devoluciones, version } = input;
+      const { muestrarioId, devoluciones, version, motivo } = input;
       const muestrario = await prisma.muestrario.findUnique({
         where: { id: muestrarioId },
         include: { items: { where: { deletedAt: null }, include: { ventas: { where: { deletedAt: null, estado: { codigo: { not: 'ANUL' } } } } } } },
@@ -156,17 +162,46 @@ export default {
       validarEmpresa(muestrario.empresaId, user.empresaActualId);
       if (muestrario.estado !== 'ACTIVO') throw new Error('Ya está liquidado');
 
+      // ── NUEVO — el invariante de negocio es:
+      //   stock devuelto = cantidadEntregada − cantidadDevuelta − vendida
+      // Antes de liquidar, verificamos que cada item quede en 0, o que haya
+      // un motivo explicando por qué no (piezas perdidas, dañadas, con la
+      // vendedora todavía, etc.). El sistema no decide qué pasó — solo
+      // exige que quede una nota, igual que "Cerrar orden (entrega parcial)".
+      const devolucionesPorItem = new Map(devoluciones.map((d) => [d.itemId, Number(d.cantidadDevuelta) || 0]));
+      const itemsConFaltante = [];
+      for (const item of muestrario.items) {
+        const vendidas = unidadesVendidas(item);
+        const devuelveAhora = devolucionesPorItem.get(item.id) ?? 0;
+        const devueltaTotal = item.cantidadDevuelta + devuelveAhora;
+        const faltante = item.cantidadEntregada - vendidas - devueltaTotal;
+        if (faltante !== 0) itemsConFaltante.push({ item, faltante });
+      }
+      if (itemsConFaltante.length > 0 && !motivo?.trim()) {
+        const detalle = itemsConFaltante
+          .map(({ item, faltante }) => `producto #${item.productoId}: ${faltante > 0 ? `${faltante} sin contabilizar` : `${-faltante} de más`}`)
+          .join('; ');
+        throw new Error(`Hay piezas sin cuadrar (${detalle}). Indique un motivo para poder liquidar de todas formas.`);
+      }
+
       await prisma.$transaction(async (tx) => {
         for (const dev of devoluciones) {
           if (dev.cantidadDevuelta <= 0) continue;
           const item = muestrario.items.find(i => i.id === dev.itemId);
           if (!item) continue;
-          const maxDev = item.cantidadEntregada - item.ventas.length;
+          const maxDev = item.cantidadEntregada - unidadesVendidas(item);
           if (dev.cantidadDevuelta > maxDev) throw new Error(`Devuelve más de lo disponible en item ${dev.itemId}`);
           await tx.muestrarioItem.update({ where: { id: dev.itemId }, data: { cantidadDevuelta: dev.cantidadDevuelta, version: { increment: 1 } } });
           await tx.producto.update({ where: { id: item.productoId }, data: { enStock: { increment: dev.cantidadDevuelta } } });
         }
-        const result = await tx.muestrario.updateMany({ where: { id: muestrarioId, version: Number(version) }, data: { estado: 'LIQUIDADO', fechaCierre: new Date(), version: { increment: 1 }, usu_actualizacion: user.codigo } });
+        const fechaTexto = new Date().toLocaleDateString('es-CO');
+        const notaFaltante = itemsConFaltante.length > 0
+          ? `[LIQUIDADO CON FALTANTE ${fechaTexto}] ${motivo.trim()}`
+          : null;
+        const notaFinal = notaFaltante
+          ? (muestrario.nota ? `${muestrario.nota}\n${notaFaltante}` : notaFaltante)
+          : muestrario.nota;
+        const result = await tx.muestrario.updateMany({ where: { id: muestrarioId, version: Number(version) }, data: { estado: 'LIQUIDADO', fechaCierre: new Date(), nota: notaFinal, version: { increment: 1 }, usu_actualizacion: user.codigo } });
         if (result.count === 0) throw new Error('Modificado por otro usuario');
       });
       return prisma.muestrario.findUnique({ where: { id: muestrarioId }, include: incMuestrario });

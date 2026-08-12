@@ -5,7 +5,7 @@ const ITEM_FIELDS = `
   cantidadEntregada cantidadDevuelta cantidadVendida cantidadDisponible version
   producto { id referencia nombre precioVenta foto enStock }
   ventas {
-    id clienteId precioVenta version
+    id clienteId precioVenta cantidad version
     cliente   { id nombre telefono }
     medioPago { id codigo nombre }
     estado    { id codigo nombre }
@@ -13,15 +13,15 @@ const ITEM_FIELDS = `
 `;
 
 const MUESTRARIO_FIELDS = `
-  id empresaId 
-  vendedoraId 
-  fechaSalida 
+  id empresaId
+  vendedoraId
+  fechaSalida
   fechaCierre
-  estado 
-  nota 
-  version 
-  totalPiezas 
-  totalVendidas 
+  estado
+  nota
+  version
+  totalPiezas
+  totalVendidas
   totalEfectivoPendiente
   vendedora { id nombre codigo }
   items { ${ITEM_FIELDS} }
@@ -98,6 +98,7 @@ export const LIQUIDAR_MUESTRARIO = gql`
     liquidarMuestrario(input: $input) {
       id
       estado
+      nota
     }
   }
 `;

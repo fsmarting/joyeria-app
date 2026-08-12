@@ -59,6 +59,8 @@ export default /* GraphQL */ `
     medioPagoId: Int!
     vendedoraId: Int!
     empresaId: Int!
+    # ── NUEVO — antes cada venta desde muestrario era siempre 1 unidad.
+    cantidad: Int
   }
   input DevolucionItemInput {
     itemId: Int!
@@ -68,6 +70,11 @@ export default /* GraphQL */ `
     muestrarioId: Int!
     devoluciones: [DevolucionItemInput!]!
     version: Int!
+    # ── NUEVO — obligatorio solo si queda algún item con piezas sin
+    # contabilizar (ni vendidas ni devueltas). El sistema no bloquea el
+    # cierre, pero exige que quede una nota explicando qué pasó, igual que
+    # "Cerrar orden (entrega parcial)" en Órdenes de Producción.
+    motivo: String
   }
 
   extend type Query {

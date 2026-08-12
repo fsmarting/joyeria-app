@@ -100,6 +100,9 @@ export default /* GraphQL */ `
     agregarItemCotizacion(input: CotizacionItemInput!): CotizacionItem!
     actualizarItemCotizacion(input: CotizacionItemUpdateInput!): CotizacionItem!
     eliminarItemCotizacion(id: Int!): Boolean!
-    convertirEnVenta(input: ConvertirVentaInput!): Venta!
+    # ── CAMBIO — ya no exige "1 solo producto por cotización". Convierte
+    # TODAS las líneas de la cotización, una Venta por línea, y devuelve la
+    # lista completa (antes devolvía una sola Venta).
+    convertirEnVenta(input: ConvertirVentaInput!): [Venta!]!
   }
 `;

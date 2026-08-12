@@ -65,11 +65,24 @@ export const camposVenta = [
       f.producto ? `${f.producto.referencia} — ${f.producto.nombre}` : "-",
   },
   {
+    // ── NUEVO — antes cada venta era siempre 1 unidad (implícito, sin
+    // campo). Ahora es un valor real y precioVenta pasa a ser el precio
+    // POR UNIDAD.
+    nombre: "cantidad",
+    etiqueta: "Cantidad",
+    tipoForm: "number",
+    obligatorio: true,
+    ancho: "90px",
+    ordenListado: 4,
+    valorDefecto: 1,
+    render: (f) => f.cantidad ?? 1,
+  },
+  {
     nombre: "canalId",
     etiqueta: "Canal llegada",
     tipoForm: "select",
     ancho: "120px",
-    ordenListado: 4,
+    ordenListado: 5,
     relationConfig: {
       query: GET_GRUPOS_POR_CODIGOS,
       dataKey: "gruposPorCodigos",
@@ -85,7 +98,7 @@ export const camposVenta = [
     tipoForm: "select",
     obligatorio: true,
     ancho: "120px",
-    ordenListado: 5,
+    ordenListado: 6,
     relationConfig: {
       query: GET_GRUPOS_POR_CODIGOS,
       dataKey: "gruposPorCodigos",
@@ -97,20 +110,35 @@ export const camposVenta = [
   },
   {
     nombre: "precioVenta",
-    etiqueta: "Precio venta",
+    etiqueta: "Precio venta (unitario)",
     tipoForm: "number",
     obligatorio: true,
-    ancho: "130px",
-    ordenListado: 6,
+    ancho: "140px",
+    ordenListado: 7,
     valorDefecto: 0,
     render: (f) => fmt(f.precioVenta),
+  },
+  {
+    // ── NUEVO — total = precioVenta (unitario) × cantidad. Solo listado,
+    // no se edita — se deriva de los otros dos campos.
+    nombre: "total",
+    etiqueta: "Total",
+    soloListado: true,
+    ancho: "130px",
+    ordenListado: 8,
+    ordenable: false,
+    render: (f) => (
+      <strong className="text-success">
+        {fmt(Number(f.precioVenta ?? 0) * Number(f.cantidad ?? 1))}
+      </strong>
+    ),
   },
   {
     nombre: "vendedoraId",
     etiqueta: "Vendedora",
     tipoForm: "select",
     ancho: "140px",
-    ordenListado: 7,
+    ordenListado: 9,
     relationConfig: {
       query: OBTENER_USUARIOS,
       dataKey: "obtenerUsuarios",
@@ -120,19 +148,15 @@ export const camposVenta = [
     render: (f) => f.vendedora?.nombre ?? "-",
   },
   {
+    // ── CAMBIO — antes se elegía manualmente al crear la venta (única de
+    // las 3 formas que lo pedía). Ahora lo calcula el servidor según medio
+    // de pago (igual que muestrario y cotización), y solo cambia por medio
+    // de "✓ Confirmar pago" o "🚫 Anular venta". Por eso sale del formulario.
     nombre: "estadoId",
     etiqueta: "Estado",
-    tipoForm: "select",
-    obligatorio: true,
+    soloListado: true,
     ancho: "120px",
-    ordenListado: 8,
-    relationConfig: {
-      query: GET_GRUPOS_POR_CODIGOS,
-      dataKey: "gruposPorCodigos",
-      valueField: "id",
-      displayField: "nombre",
-      fixedVariables: { catalogoCodigo: "VENT", subcatalogoCodigo: "ESTV" },
-    },
+    ordenListado: 10,
     render: (f) => {
       const c =
         f.estado?.codigo === "CONF"
@@ -151,7 +175,7 @@ export const camposVenta = [
     etiqueta: "Origen",
     soloListado: true,
     ancho: "140px",
-    ordenListado: 9,
+    ordenListado: 11,
     ordenable: false,
     render: (f) => {
       const label = f.origenLabel ?? "🛍️ Directa";

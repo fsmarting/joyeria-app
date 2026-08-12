@@ -42,8 +42,15 @@ export const AGREGAR_ITEM_COTIZACION    = gql`mutation AgregarItemCotizacion($in
 export const ACTUALIZAR_ITEM_COTIZACION = gql`mutation ActualizarItemCotizacion($input: CotizacionItemUpdateInput!) { actualizarItemCotizacion(input: $input) { ${ITEM_FIELDS} } }`;
 export const ELIMINAR_ITEM_COTIZACION   = gql`mutation EliminarItemCotizacion($id: Int!) { eliminarItemCotizacion(id: $id) }`;
 
+// ── CAMBIO — convertirEnVenta ahora devuelve una LISTA de Venta (una por
+// cada línea de la cotización), ya no exige "1 solo producto por cotización".
 export const CONVERTIR_EN_VENTA = gql`
   mutation ConvertirEnVenta($input: ConvertirVentaInput!) {
-    convertirEnVenta(input: $input) { id estado { nombre } }
+    convertirEnVenta(input: $input) {
+      id
+      cantidad
+      precioVenta
+      estado { nombre }
+    }
   }
 `;

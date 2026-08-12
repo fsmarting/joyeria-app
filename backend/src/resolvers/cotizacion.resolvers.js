@@ -255,6 +255,10 @@ export default {
       return true;
     },
 
+    // ── CAMBIO — ya no exige "1 solo producto por cotización". Convierte
+    // TODAS las líneas en su propia Venta (una Venta por CotizacionItem,
+    // cada una con su cantidad y su precioUnitario), y devuelve la lista.
+    // Si alguna línea no tiene stock suficiente, se cancela todo (transacción).
     convertirEnVenta: async (_, { input }, { prisma, user }) => {
       requireAuth(user);
       const { cotizacionId, medioPagoId, fecha } = input;
@@ -267,21 +271,21 @@ export default {
       });
       if (!cotizacion) throw new Error("Cotización no existe");
       validarEmpresa(cotizacion.empresaId, user.empresaActualId);
+      if (cotizacion.estado?.codigo === "CONV")
+        throw new Error("Esta cotización ya fue convertida en venta");
       if (!cotizacion.clienteId)
         throw new Error(
           "La cotización necesita una clienta para convertirse en venta",
         );
       if (cotizacion.items.length === 0)
         throw new Error("La cotización no tiene productos");
-      if (cotizacion.items.length > 1)
-        throw new Error(
-          "Para cotizaciones con múltiples productos, cree una venta por cada pieza manualmente",
-        );
 
-      const item = cotizacion.items[0];
-      const producto = item.producto;
-      if (producto.enStock <= 0)
-        throw new Error(`Sin stock para ${producto.nombre}`);
+      for (const item of cotizacion.items) {
+        if (item.producto.enStock < item.cantidad)
+          throw new Error(
+            `Sin stock suficiente para ${item.producto.nombre}. Disponible: ${item.producto.enStock}, necesita: ${item.cantidad}`,
+          );
+      }
 
       const medioPago = await prisma.grupo.findUnique({
         where: { id: Number(medioPagoId) },
@@ -308,37 +312,48 @@ export default {
         medioPago?.codigo === "TARJ"
           ? Number(ue?.comisionTarjeta ?? 0)
           : Number(ue?.comisionEfectivo ?? 0);
-      const valorComision = (Number(item.precioUnitario) * porcentaje) / 100;
 
       return prisma.$transaction(async (tx) => {
-        const venta = await tx.venta.create({
-          data: {
-            empresaId: cotizacion.empresaId,
-            clienteId: cotizacion.clienteId,
-            productoId: item.productoId,
-            vendedoraId: cotizacion.vendedoraId ?? null,
-            fecha: fecha ? new Date(fecha) : new Date(),
-            precioVenta: item.precioUnitario,
-            medioPagoId: Number(medioPagoId),
-            porcentajeComision: porcentaje,
-            valorComision,
-            estadoId: estadoVenta.id,
-            usu_creacion: user.codigo,
-          },
-          include: {
-            cliente: true,
-            producto: true,
-            vendedora: true,
-            medioPago: true,
-            estado: true,
-            repartos: true,
-          },
-        });
-
-        await tx.producto.update({
-          where: { id: item.productoId },
-          data: { enStock: { decrement: 1 } },
-        });
+        const ventas = [];
+        for (const item of cotizacion.items) {
+          const valorComision =
+            (Number(item.precioUnitario) * Number(item.cantidad) * porcentaje) / 100;
+          const venta = await tx.venta.create({
+            data: {
+              empresaId: cotizacion.empresaId,
+              clienteId: cotizacion.clienteId,
+              productoId: item.productoId,
+              vendedoraId: cotizacion.vendedoraId ?? null,
+              // ── FIX (confirmado por el usuario) — antes no se guardaba
+              // ningún vínculo con la cotización de origen. Ahora apunta a
+              // la línea (item), no a la cabeza — así origenLabel y el
+              // historial funcionan aunque haya varios productos.
+              cotizacionItemId: item.id,
+              cantidad: item.cantidad,
+              fecha: fecha ? new Date(fecha) : new Date(),
+              precioVenta: item.precioUnitario,
+              medioPagoId: Number(medioPagoId),
+              porcentajeComision: porcentaje,
+              valorComision,
+              estadoId: estadoVenta.id,
+              usu_creacion: user.codigo,
+            },
+            include: {
+              cliente: true,
+              producto: true,
+              vendedora: true,
+              medioPago: true,
+              estado: true,
+              repartos: true,
+              cotizacionItem: { include: { cotizacion: true } },
+            },
+          });
+          await tx.producto.update({
+            where: { id: item.productoId },
+            data: { enStock: { decrement: item.cantidad } },
+          });
+          ventas.push(venta);
+        }
 
         const estadoConv = await prisma.grupo.findFirst({
           where: {
@@ -357,7 +372,7 @@ export default {
           });
         }
 
-        return venta;
+        return ventas;
       });
     },
   },
