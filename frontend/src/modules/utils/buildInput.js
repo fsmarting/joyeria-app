@@ -1,3 +1,4 @@
+//buildinput.js
 export function stripTypename(obj) {
   if (Array.isArray(obj)) return obj.map(stripTypename);
   if (obj && typeof obj === "object") {
@@ -110,16 +111,20 @@ const ALLOWED_INPUT = {
     "nota",
     "version",
   ],
+  // ── CAMBIO — estadoId sale de aquí: ya no viaja en VentaInput/
+  // VentaUpdateInput (el servidor lo calcula solo, o cambia por
+  // confirmarVentaEfectivo/anularVenta). cantidad es nuevo — antes cada
+  // venta era siempre 1 unidad implícita.
   venta: [
     "empresaId",
     "clienteId",
     "productoId",
     "vendedoraId",
     "canalId",
+    "cantidad",
     "fecha",
     "precioVenta",
     "medioPagoId",
-    "estadoId",
     "version",
   ],
   conversacion: [
@@ -237,7 +242,7 @@ const NUMERIC_FIELDS = {
     "vendedoraId",
     "canalId",
     "medioPagoId",
-    "estadoId",
+    "cantidad",
     "precioVenta",
     "version",
   ],

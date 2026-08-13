@@ -60,6 +60,11 @@ export const camposVenta = [
       valueField: "id",
       displayField: "nombre",
       fixedVariables: { first: 100 },
+      // ── NUEVO — al seleccionar el producto, autocompleta precioVenta
+      // con el precio sugerido del producto (queda editable después).
+      // Mismo criterio que ya se usa en Muestrario/Cotización, ahora
+      // también en Venta Directa.
+      rellenarCampos: { precioVenta: "precioVenta" },
     },
     render: (f) =>
       f.producto ? `${f.producto.referencia} — ${f.producto.nombre}` : "-",
@@ -78,11 +83,40 @@ export const camposVenta = [
     render: (f) => f.cantidad ?? 1,
   },
   {
+    nombre: "precioVenta",
+    etiqueta: "Precio venta (unitario)",
+    tipoForm: "number",
+    obligatorio: true,
+    ancho: "140px",
+    ordenListado: 5,
+    valorDefecto: 0,
+    render: (f) => fmt(f.precioVenta),
+  },
+  {
+    // ── NUEVO — total = precioVenta (unitario) × cantidad. Ahora aparece
+    // también DENTRO del formulario (no solo en el listado), de solo
+    // lectura, y se recalcula en vivo si cambia Cantidad o Precio venta
+    // (ver el efecto nuevo en ModalGenericoAvanzado.jsx para tipoEntidad
+    // "venta"). Ya no es soloListado.
+    nombre: "total",
+    etiqueta: "Total",
+    tipoForm: "number",
+    readOnly: true,
+    ancho: "130px",
+    ordenListado: 6,
+    ordenable: false,
+    render: (f) => (
+      <strong className="text-success">
+        {fmt(Number(f.precioVenta ?? 0) * Number(f.cantidad ?? 1))}
+      </strong>
+    ),
+  },
+  {
     nombre: "canalId",
     etiqueta: "Canal llegada",
     tipoForm: "select",
     ancho: "120px",
-    ordenListado: 5,
+    ordenListado: 7,
     relationConfig: {
       query: GET_GRUPOS_POR_CODIGOS,
       dataKey: "gruposPorCodigos",
@@ -98,7 +132,7 @@ export const camposVenta = [
     tipoForm: "select",
     obligatorio: true,
     ancho: "120px",
-    ordenListado: 6,
+    ordenListado: 8,
     relationConfig: {
       query: GET_GRUPOS_POR_CODIGOS,
       dataKey: "gruposPorCodigos",
@@ -107,31 +141,6 @@ export const camposVenta = [
       fixedVariables: { catalogoCodigo: "VENT", subcatalogoCodigo: "MPAG" },
     },
     render: (f) => f.medioPago?.nombre ?? "-",
-  },
-  {
-    nombre: "precioVenta",
-    etiqueta: "Precio venta (unitario)",
-    tipoForm: "number",
-    obligatorio: true,
-    ancho: "140px",
-    ordenListado: 7,
-    valorDefecto: 0,
-    render: (f) => fmt(f.precioVenta),
-  },
-  {
-    // ── NUEVO — total = precioVenta (unitario) × cantidad. Solo listado,
-    // no se edita — se deriva de los otros dos campos.
-    nombre: "total",
-    etiqueta: "Total",
-    soloListado: true,
-    ancho: "130px",
-    ordenListado: 8,
-    ordenable: false,
-    render: (f) => (
-      <strong className="text-success">
-        {fmt(Number(f.precioVenta ?? 0) * Number(f.cantidad ?? 1))}
-      </strong>
-    ),
   },
   {
     nombre: "vendedoraId",
