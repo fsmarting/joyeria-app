@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { useQuery, useMutation } from "@apollo/client";
 import { toast } from "react-toastify";
 import EntidadGenerica from "../../components/EntidadGenerica.jsx";
@@ -31,6 +31,8 @@ function VentaRapidaForm({ item, muestrario, onDone }) {
     item.producto?.precioVenta ?? "",
   );
   const [medioPagoId, setMedioPagoId] = useState("");
+  // ── NUEVO — antes cada venta desde muestrario era siempre 1 unidad.
+  const [cantidad, setCantidad] = useState(1);
 
   const { data: dataClientes } = useQuery(OBTENER_TERCEROS_POR_TIPO, {
     variables: { tipoCodigo: "CLIENTE" },
@@ -50,6 +52,10 @@ function VentaRapidaForm({ item, muestrario, onDone }) {
   const handleVenta = async () => {
     if (!clienteId || !precioVenta || !medioPagoId)
       return toast.warning("Complete clienta, precio y medio de pago");
+    if (Number(cantidad) > item.cantidadDisponible)
+      return toast.warning(
+        `Solo hay ${item.cantidadDisponible} disponible(s)`,
+      );
     try {
       const { data } = await registrar({
         variables: {
@@ -57,6 +63,7 @@ function VentaRapidaForm({ item, muestrario, onDone }) {
             muestrarioItemId: item.id,
             clienteId: Number(clienteId),
             precioVenta: Number(precioVenta),
+            cantidad: Number(cantidad),
             medioPagoId: Number(medioPagoId),
             vendedoraId: muestrario.vendedoraId,
             empresaId: muestrario.empresaId,
@@ -98,7 +105,19 @@ function VentaRapidaForm({ item, muestrario, onDone }) {
           </select>
         </div>
         <div>
-          <label className="form-label mb-0">Precio venta</label>
+          <label className="form-label mb-0">Cantidad</label>
+          <input
+            type="number"
+            className="form-control form-control-sm"
+            style={{ width: 80 }}
+            min="1"
+            max={item.cantidadDisponible}
+            value={cantidad}
+            onChange={(e) => setCantidad(e.target.value)}
+          />
+        </div>
+        <div>
+          <label className="form-label mb-0">Precio venta (unitario)</label>
           <input
             type="number"
             className="form-control form-control-sm"
@@ -139,12 +158,27 @@ function MuestrarioPanel({ muestrario, refetch }) {
   const [vendiendo, setVendiendo] = useState(null); // itemId
   const [liquidando, setLiquidando] = useState(false);
   const [devoluciones, setDevoluciones] = useState({});
+  const [motivoFaltante, setMotivoFaltante] = useState("");
   const [productoId, setProductoId] = useState("");
   const [cantidad, setCantidad] = useState(1);
 
+  // ── CAMBIO — antes cargaba los primeros 100 productos de una sola vez
+  // (si la joyería tiene más de 100 referencias, las de más allá nunca
+  // aparecían aquí, y recorrer 100 opciones a mano es incómodo). Ahora
+  // busca por referencia/nombre igual que ya hace el resolver para los
+  // listados principales (parámetro "busqueda"), con debounce de 400ms
+  // para no disparar una consulta por cada tecla.
+  const [buscarProducto, setBuscarProducto] = useState("");
+  const [buscarProductoDebounced, setBuscarProductoDebounced] = useState("");
+  useEffect(() => {
+    const t = setTimeout(() => setBuscarProductoDebounced(buscarProducto), 400);
+    return () => clearTimeout(t);
+  }, [buscarProducto]);
+
   const { data: dataProds } = useQuery(GET_PRODUCTOS_CURSOR, {
-    variables: { first: 100 },
+    variables: { first: 30, busqueda: buscarProductoDebounced },
     fetchPolicy: "network-only",
+    skip: buscarProductoDebounced.trim().length < 1,
   });
   const productos = (dataProds?.productosFiltradosCursor?.edges || []).map(
     (e) => e.node,
@@ -155,6 +189,7 @@ function MuestrarioPanel({ muestrario, refetch }) {
   const [liquidar] = useMutation(LIQUIDAR_MUESTRARIO);
 
   const activo = muestrario.estado === "ACTIVO";
+  const items = muestrario.items || [];
 
   const handleAgregarItem = async () => {
     if (!productoId) return toast.warning("Seleccione un producto");
@@ -171,6 +206,8 @@ function MuestrarioPanel({ muestrario, refetch }) {
       toast.success("Producto agregado al muestrario");
       setProductoId("");
       setCantidad(1);
+      setBuscarProducto("");
+      setBuscarProductoDebounced("");
       await refetch();
     } catch (e) {
       toast.error(e.message);
@@ -187,7 +224,25 @@ function MuestrarioPanel({ muestrario, refetch }) {
     }
   };
 
+  // ── NUEVO — piezas que quedarían sin contabilizar por item, según lo
+  // que ya lleva ingresado en el formulario de devoluciones. El invariante
+  // es: cantidadEntregada = cantidadDevuelta + vendidas. Si algo no cuadra,
+  // el sistema exige un motivo — no bloquea, pero tampoco lo deja pasar en
+  // silencio (mismo principio que "Cerrar orden con entrega parcial").
+  const faltantesPorItem = items.map((item) => {
+    const devuelveAhora = Number(devoluciones[item.id] ?? 0) || 0;
+    const faltante =
+      item.cantidadEntregada - item.cantidadVendida - (item.cantidadDevuelta + devuelveAhora);
+    return { item, faltante };
+  });
+  const hayFaltante = faltantesPorItem.some((f) => f.faltante !== 0);
+
   const handleLiquidar = async () => {
+    if (hayFaltante && !motivoFaltante.trim()) {
+      return toast.warning(
+        "Hay piezas sin cuadrar (ni vendidas ni devueltas) — indique el motivo para poder liquidar",
+      );
+    }
     const devs = Object.entries(devoluciones).map(
       ([itemId, cantidadDevuelta]) => ({
         itemId: Number(itemId),
@@ -201,25 +256,25 @@ function MuestrarioPanel({ muestrario, refetch }) {
             muestrarioId: muestrario.id,
             devoluciones: devs,
             version: muestrario.version,
+            motivo: motivoFaltante.trim() || null,
           },
         },
       });
       toast.success("Muestrario liquidado correctamente");
       setLiquidando(false);
+      setMotivoFaltante("");
       await refetch();
     } catch (e) {
       toast.error(e.message);
     }
   };
 
-  const items = muestrario.items || [];
-
   return (
     <div className="p-3 bg-light border-top">
       {/* Resumen */}
       <div className="d-flex gap-3 align-items-center mb-3 flex-wrap">
         <strong style={{ fontSize: 13 }}>
-          Muestrario — {muestrario.vendedora?.nombre}
+          {muestrario.numero} — {muestrario.vendedora?.nombre}
         </strong>
         <span className="badge bg-success">
           {muestrario.totalPiezas} piezas entregadas
@@ -305,7 +360,8 @@ function MuestrarioPanel({ muestrario, refetch }) {
                 <thead>
                   <tr>
                     <th>Clienta</th>
-                    <th>Precio</th>
+                    <th>Cant.</th>
+                    <th>Precio unit.</th>
                     <th>Pago</th>
                     <th>Estado</th>
                     <th></th>
@@ -315,6 +371,7 @@ function MuestrarioPanel({ muestrario, refetch }) {
                   {item.ventas.map((v) => (
                     <tr key={v.id}>
                       <td>{v.cliente?.nombre}</td>
+                      <td>{v.cantidad ?? 1}</td>
                       <td>{fmt(v.precioVenta)}</td>
                       <td>{v.medioPago?.nombre}</td>
                       <td>
@@ -364,14 +421,33 @@ function MuestrarioPanel({ muestrario, refetch }) {
           <div className="fw-bold mb-2">+ Agregar producto al muestrario</div>
           <div className="d-flex gap-2 align-items-end flex-wrap">
             <div>
+              <label className="form-label mb-0">Buscar producto</label>
+              <input
+                type="text"
+                className="form-control form-control-sm"
+                style={{ width: 180 }}
+                placeholder="Referencia o nombre..."
+                value={buscarProducto}
+                onChange={(e) => {
+                  setBuscarProducto(e.target.value);
+                  setProductoId("");
+                }}
+              />
+            </div>
+            <div>
               <label className="form-label mb-0">Producto</label>
               <select
                 className="form-select form-select-sm"
                 style={{ width: 240 }}
                 value={productoId}
                 onChange={(e) => setProductoId(e.target.value)}
+                disabled={buscarProductoDebounced.trim().length < 1}
               >
-                <option value="">Seleccione...</option>
+                <option value="">
+                  {buscarProductoDebounced.trim().length < 1
+                    ? "Escriba para buscar..."
+                    : "Seleccione..."}
+                </option>
                 {productos
                   .filter((p) => !items.find((i) => i.productoId === p.id))
                   .map((p) => (
@@ -423,9 +499,10 @@ function MuestrarioPanel({ muestrario, refetch }) {
           </div>
           <p className="text-muted mb-2" style={{ fontSize: 11 }}>
             Ingrese cuántas piezas devuelve la vendedora por cada producto. Las
-            piezas devueltas vuelven al stock.
+            piezas devueltas vuelven al stock. El sistema exige un motivo si
+            algo queda sin cuadrar (ni vendido, ni devuelto).
           </p>
-          {items.map((item) => {
+          {faltantesPorItem.map(({ item, faltante }) => {
             const maxDev = item.cantidadEntregada - item.cantidadVendida;
             return (
               <div
@@ -452,9 +529,25 @@ function MuestrarioPanel({ muestrario, refetch }) {
                   }
                 />
                 <span className="text-muted">devueltas</span>
+                {faltante !== 0 && (
+                  <span className="badge bg-warning text-dark">
+                    {faltante > 0
+                      ? `${faltante} sin contabilizar`
+                      : `${-faltante} de más`}
+                  </span>
+                )}
               </div>
             );
           })}
+          {hayFaltante && (
+            <textarea
+              className="form-control form-control-sm mt-2 mb-2"
+              placeholder="Motivo del faltante (obligatorio) — ej: pieza perdida, dañada, se queda con la vendedora, etc."
+              rows={2}
+              value={motivoFaltante}
+              onChange={(e) => setMotivoFaltante(e.target.value)}
+            />
+          )}
           <div className="d-flex gap-2 mt-2">
             <button className="btn btn-danger btn-sm" onClick={handleLiquidar}>
               Confirmar liquidación
