@@ -14,6 +14,8 @@ export default /* GraphQL */ `
   type Muestrario {
     id: Int!
     empresaId: Int!
+    # ── NUEVO — número correlativo generado por el servidor.
+    numero: String!
     vendedoraId: Int!
     fechaSalida: String!
     fechaCierre: String

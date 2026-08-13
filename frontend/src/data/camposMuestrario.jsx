@@ -8,12 +8,24 @@ const fmt = (n) =>
 
 export const camposMuestrario = [
   {
+    // ── NUEVO — número correlativo MST-{año}-{consecutivo}, generado por
+    // el servidor. Mismo tratamiento que "numero" en camposOrdenProduccion.
+    nombre: "numero",
+    etiqueta: "N° Muestrario",
+    tipoForm: "text",
+    maxLength: 20,
+    ancho: "110px",
+    ordenListado: 1,
+    ocultarEnCreacion: true,
+    readOnly: true,
+  },
+  {
     nombre: "vendedoraId",
     etiqueta: "Vendedora",
     tipoForm: "select",
     obligatorio: true,
     ancho: "160px",
-    ordenListado: 1,
+    ordenListado: 2,
     relationConfig: {
       query: OBTENER_USUARIOS,
       dataKey: "obtenerUsuarios",
@@ -28,7 +40,7 @@ export const camposMuestrario = [
     tipoForm: "date",
     obligatorio: true,
     ancho: "110px",
-    ordenListado: 2,
+    ordenListado: 3,
     valorDefecto: new Date().toISOString().split("T")[0],
     valueTransformer: (val) => (val ? val.split("T")[0] : ""),
     render: (f) => fmtF(f.fechaSalida),
@@ -38,7 +50,7 @@ export const camposMuestrario = [
     etiqueta: "Estado",
     soloListado: true,
     ancho: "100px",
-    ordenListado: 3,
+    ordenListado: 4,
     render: (f) => {
       const c = f.estado === "ACTIVO" ? "success" : "secondary";
       return <span className={`badge bg-${c}`}>{f.estado}</span>;
@@ -49,7 +61,7 @@ export const camposMuestrario = [
     etiqueta: "Piezas",
     soloListado: true,
     ancho: "80px",
-    ordenListado: 4,
+    ordenListado: 5,
     render: (f) => f.totalPiezas ?? 0,
   },
   {
@@ -57,7 +69,7 @@ export const camposMuestrario = [
     etiqueta: "Vendidas",
     soloListado: true,
     ancho: "80px",
-    ordenListado: 5,
+    ordenListado: 6,
     render: (f) => (
       <span
         className={`badge ${f.totalVendidas > 0 ? "bg-success" : "bg-secondary"}`}
@@ -71,7 +83,7 @@ export const camposMuestrario = [
     etiqueta: "Efectivo pendiente",
     soloListado: true,
     ancho: "140px",
-    ordenListado: 6,
+    ordenListado: 7,
     render: (f) =>
       Number(f.totalEfectivoPendiente) > 0 ? (
         <span className="badge bg-warning text-dark">
@@ -86,7 +98,7 @@ export const camposMuestrario = [
     etiqueta: "Fecha cierre",
     soloListado: true,
     ancho: "110px",
-    ordenListado: 7,
+    ordenListado: 8,
     render: (f) =>
       f.fechaCierre ? (
         fmtF(f.fechaCierre)

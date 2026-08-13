@@ -18,6 +18,17 @@ const incMuestrario = {
 // Ahora una venta puede cubrir varias unidades, así que sumamos cantidad.
 const unidadesVendidas = (item) => (item.ventas || []).reduce((s, v) => s + v.cantidad, 0);
 
+// ── NUEVO — mismo patrón que generarNumeroOrden en ordenProduccion.resolvers.js
+const generarNumeroMuestrario = async (prisma, empresaId) => {
+  const anio = new Date().getFullYear();
+  const prefijo = `MST-${anio}-`;
+  const count = await prisma.muestrario.count({
+    where: { empresaId, numero: { startsWith: prefijo } },
+  });
+  const consecutivo = String(count + 1).padStart(3, '0');
+  return `${prefijo}${consecutivo}`;
+};
+
 export default {
   Muestrario: {
     fechaSalida: (m) => m.fechaSalida ? new Date(m.fechaSalida).toISOString() : null,
@@ -52,8 +63,9 @@ export default {
     crearMuestrario: async (_, { input }, { prisma, user }) => {
       requireAuth(user);
       validarEmpresa(input.empresaId, user.empresaActualId);
+      const numero = await generarNumeroMuestrario(prisma, user.empresaActualId);
       return prisma.muestrario.create({
-        data: { ...input, fechaSalida: new Date(input.fechaSalida), estado: 'ACTIVO', usu_creacion: user.codigo },
+        data: { ...input, numero, fechaSalida: new Date(input.fechaSalida), estado: 'ACTIVO', usu_creacion: user.codigo },
         include: incMuestrario,
       });
     },

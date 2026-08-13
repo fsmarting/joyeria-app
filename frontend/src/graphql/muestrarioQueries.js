@@ -14,6 +14,7 @@ const ITEM_FIELDS = `
 
 const MUESTRARIO_FIELDS = `
   id empresaId
+  numero
   vendedoraId
   fechaSalida
   fechaCierre

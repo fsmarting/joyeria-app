@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect } from "react";
+import { useMemo, useState } from "react";
 import { useQuery, useMutation } from "@apollo/client";
 import { toast } from "react-toastify";
 import EntidadGenerica from "../../components/EntidadGenerica.jsx";
@@ -162,23 +162,9 @@ function MuestrarioPanel({ muestrario, refetch }) {
   const [productoId, setProductoId] = useState("");
   const [cantidad, setCantidad] = useState(1);
 
-  // ── CAMBIO — antes cargaba los primeros 100 productos de una sola vez
-  // (si la joyería tiene más de 100 referencias, las de más allá nunca
-  // aparecían aquí, y recorrer 100 opciones a mano es incómodo). Ahora
-  // busca por referencia/nombre igual que ya hace el resolver para los
-  // listados principales (parámetro "busqueda"), con debounce de 400ms
-  // para no disparar una consulta por cada tecla.
-  const [buscarProducto, setBuscarProducto] = useState("");
-  const [buscarProductoDebounced, setBuscarProductoDebounced] = useState("");
-  useEffect(() => {
-    const t = setTimeout(() => setBuscarProductoDebounced(buscarProducto), 400);
-    return () => clearTimeout(t);
-  }, [buscarProducto]);
-
   const { data: dataProds } = useQuery(GET_PRODUCTOS_CURSOR, {
-    variables: { first: 30, busqueda: buscarProductoDebounced },
+    variables: { first: 100 },
     fetchPolicy: "network-only",
-    skip: buscarProductoDebounced.trim().length < 1,
   });
   const productos = (dataProds?.productosFiltradosCursor?.edges || []).map(
     (e) => e.node,
@@ -206,8 +192,6 @@ function MuestrarioPanel({ muestrario, refetch }) {
       toast.success("Producto agregado al muestrario");
       setProductoId("");
       setCantidad(1);
-      setBuscarProducto("");
-      setBuscarProductoDebounced("");
       await refetch();
     } catch (e) {
       toast.error(e.message);
@@ -274,7 +258,7 @@ function MuestrarioPanel({ muestrario, refetch }) {
       {/* Resumen */}
       <div className="d-flex gap-3 align-items-center mb-3 flex-wrap">
         <strong style={{ fontSize: 13 }}>
-          {muestrario.numero} — {muestrario.vendedora?.nombre}
+          Muestrario — {muestrario.vendedora?.nombre}
         </strong>
         <span className="badge bg-success">
           {muestrario.totalPiezas} piezas entregadas
@@ -421,33 +405,14 @@ function MuestrarioPanel({ muestrario, refetch }) {
           <div className="fw-bold mb-2">+ Agregar producto al muestrario</div>
           <div className="d-flex gap-2 align-items-end flex-wrap">
             <div>
-              <label className="form-label mb-0">Buscar producto</label>
-              <input
-                type="text"
-                className="form-control form-control-sm"
-                style={{ width: 180 }}
-                placeholder="Referencia o nombre..."
-                value={buscarProducto}
-                onChange={(e) => {
-                  setBuscarProducto(e.target.value);
-                  setProductoId("");
-                }}
-              />
-            </div>
-            <div>
               <label className="form-label mb-0">Producto</label>
               <select
                 className="form-select form-select-sm"
                 style={{ width: 240 }}
                 value={productoId}
                 onChange={(e) => setProductoId(e.target.value)}
-                disabled={buscarProductoDebounced.trim().length < 1}
               >
-                <option value="">
-                  {buscarProductoDebounced.trim().length < 1
-                    ? "Escriba para buscar..."
-                    : "Seleccione..."}
-                </option>
+                <option value="">Seleccione...</option>
                 {productos
                   .filter((p) => !items.find((i) => i.productoId === p.id))
                   .map((p) => (
