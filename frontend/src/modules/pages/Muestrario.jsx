@@ -53,9 +53,7 @@ function VentaRapidaForm({ item, muestrario, onDone }) {
     if (!clienteId || !precioVenta || !medioPagoId)
       return toast.warning("Complete clienta, precio y medio de pago");
     if (Number(cantidad) > item.cantidadDisponible)
-      return toast.warning(
-        `Solo hay ${item.cantidadDisponible} disponible(s)`,
-      );
+      return toast.warning(`Solo hay ${item.cantidadDisponible} disponible(s)`);
     try {
       const { data } = await registrar({
         variables: {
@@ -191,6 +189,20 @@ function MuestrarioPanel({ muestrario, refetch }) {
   const activo = muestrario.estado === "ACTIVO";
   const items = muestrario.items || [];
 
+  // ── NUEVO — visibilidad después de liquidado: a diferencia de
+  // "faltantesPorItem" (que se usa mientras se está liquidando y depende
+  // de lo que se esté escribiendo en el formulario), esto mira los valores
+  // ya guardados en cada item. Así, cualquiera que abra un muestrario ya
+  // cerrado ve de una si algo quedó sin cuadrar, sin tener que restar a
+  // mano "entregadas - vendidas - devueltas" por producto.
+  const faltantesLiquidados = items.map((item) => ({
+    item,
+    faltante:
+      item.cantidadEntregada - item.cantidadVendida - item.cantidadDevuelta,
+  }));
+  const hayFaltanteLiquidado =
+    !activo && faltantesLiquidados.some((f) => f.faltante !== 0);
+
   const handleAgregarItem = async () => {
     if (!productoId) return toast.warning("Seleccione un producto");
     try {
@@ -232,7 +244,9 @@ function MuestrarioPanel({ muestrario, refetch }) {
   const faltantesPorItem = items.map((item) => {
     const devuelveAhora = Number(devoluciones[item.id] ?? 0) || 0;
     const faltante =
-      item.cantidadEntregada - item.cantidadVendida - (item.cantidadDevuelta + devuelveAhora);
+      item.cantidadEntregada -
+      item.cantidadVendida -
+      (item.cantidadDevuelta + devuelveAhora);
     return { item, faltante };
   });
   const hayFaltante = faltantesPorItem.some((f) => f.faltante !== 0);
@@ -287,11 +301,29 @@ function MuestrarioPanel({ muestrario, refetch }) {
             Efectivo/Transf. pendiente: {fmt(muestrario.totalEfectivoPendiente)}
           </span>
         )}
+        {/* ── NUEVO — visible para cualquiera que abra el muestrario, sin
+            tener que restar cantidades a mano ni abrir "Editar". */}
+        {hayFaltanteLiquidado && (
+          <span className="badge bg-danger">⚠️ Liquidado con faltante</span>
+        )}
       </div>
+
+      {/* ── NUEVO — la nota (incluye el motivo del faltante, si lo hubo)
+          ahora se ve directo en el detalle, no solo abriendo "Editar". */}
+      {muestrario.nota && (
+        <div
+          className="alert alert-secondary py-2 px-3 mb-3"
+          style={{ fontSize: 12, whiteSpace: "pre-wrap" }}
+        >
+          <strong>Nota:</strong> {muestrario.nota}
+        </div>
+      )}
 
       {/* Tabla de items */}
       {items.map((item) => {
         const disponible = item.cantidadDisponible;
+        const itemFaltanteLiquidado =
+          faltantesLiquidados.find((f) => f.item.id === item.id)?.faltante ?? 0;
         return (
           <div key={item.id} className="border rounded p-2 bg-white mb-2">
             <div className="d-flex justify-content-between align-items-start flex-wrap gap-2">
@@ -310,6 +342,16 @@ function MuestrarioPanel({ muestrario, refetch }) {
                     />
                   )}
                   {item.producto?.referencia} — {item.producto?.nombre}
+                  {!activo && itemFaltanteLiquidado !== 0 && (
+                    <span
+                      className="badge bg-warning text-dark ms-2"
+                      style={{ fontSize: 10 }}
+                    >
+                      {itemFaltanteLiquidado > 0
+                        ? `${itemFaltanteLiquidado} sin contabilizar`
+                        : `${-itemFaltanteLiquidado} de más`}
+                    </span>
+                  )}
                 </div>
                 <div className="text-muted" style={{ fontSize: 11 }}>
                   Entregadas: {item.cantidadEntregada} · Vendidas:{" "}
