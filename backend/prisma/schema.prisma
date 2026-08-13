@@ -534,6 +534,9 @@ model EntregaOrden {
 model Muestrario {
   id Int @id @default(autoincrement())
   empresaId Int
+  // ── NUEVO — número correlativo MST-{año}-{consecutivo}, igual patrón
+  // que OrdenProduccion.numero (generado en el servidor, no editable).
+  numero String @db.VarChar(20)
   vendedoraId Int
   fechaSalida DateTime @default(now())
   fechaCierre DateTime?
