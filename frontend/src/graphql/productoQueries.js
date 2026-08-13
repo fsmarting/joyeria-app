@@ -78,3 +78,30 @@ export const VALIDAR_CODIGO_PRODUCTO = gql`
     validarCodigoProducto(empresaId: $empresaId, referencia: $referencia)
   }
 `;
+
+// ── NUEVO — visibilidad de inventario (Kardex) ─────────────────────
+export const GET_MOVIMIENTOS_INVENTARIO_PRODUCTO = gql`
+  query MovimientosInventarioProducto($productoId: Int!) {
+    movimientosInventarioProducto(productoId: $productoId) {
+      fecha
+      tipo
+      referencia
+      cantidad
+      entradaStock
+      salidaStock
+      variacionMuestrario
+    }
+  }
+`;
+export const CREAR_AJUSTE_INVENTARIO = gql`
+  mutation CrearAjusteInventario($input: AjusteInventarioInput!) {
+    crearAjusteInventario(input: $input) {
+      id
+      numero
+      tipoMovimiento
+      cantidad
+      motivo
+      fecha
+    }
+  }
+`;

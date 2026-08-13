@@ -13,6 +13,8 @@ import {
   AGREGAR_INSUMO_PRODUCTO,
   ACTUALIZAR_INSUMO_PRODUCTO,
   ELIMINAR_INSUMO_PRODUCTO,
+  GET_MOVIMIENTOS_INVENTARIO_PRODUCTO,
+  CREAR_AJUSTE_INVENTARIO,
 } from "../../graphql/productoQueries.js";
 import { GET_HISTORICO_COSTO_ORDENES } from "../../graphql/ordenProduccionQueries.js";
 
@@ -155,6 +157,251 @@ function PiedraRow({ item, onActualizar, onEliminar }) {
         )}
       </td>
     </tr>
+  );
+}
+
+// ── NUEVO — visibilidad de inventario (Kardex) ──────────────────
+// Arma el Kardex mensual a partir de la lista plana de movimientos que
+// entrega el backend (movimientosInventarioProducto). El "saldo inicial"
+// no está guardado en ninguna parte (no hay cierre de mes formal) — se
+// deduce hacia atrás desde el único dato que sí es la verdad hoy:
+// producto.enStock. Mismo modelo que se validó en la simulación de Excel
+// antes de programar esto (hoja "Kardex Mensual" + "Cruce y Verificación").
+const MESES_NOMBRE = [
+  "Enero",
+  "Febrero",
+  "Marzo",
+  "Abril",
+  "Mayo",
+  "Junio",
+  "Julio",
+  "Agosto",
+  "Septiembre",
+  "Octubre",
+  "Noviembre",
+  "Diciembre",
+];
+
+function calcularKardex(movimientos, saldoActualHoy) {
+  const totalEntradas = movimientos.reduce((s, m) => s + m.entradaStock, 0);
+  const totalSalidas = movimientos.reduce((s, m) => s + m.salidaStock, 0);
+  const saldoInicial = saldoActualHoy - totalEntradas + totalSalidas;
+
+  const porMes = new Map();
+  for (const m of movimientos) {
+    const d = new Date(m.fecha);
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+    if (!porMes.has(key)) {
+      porMes.set(key, {
+        entradas: 0,
+        salidas: 0,
+        anio: d.getFullYear(),
+        mes: d.getMonth() + 1,
+      });
+    }
+    const acc = porMes.get(key);
+    acc.entradas += m.entradaStock;
+    acc.salidas += m.salidaStock;
+  }
+
+  const meses = Array.from(porMes.entries()).sort(([a], [b]) =>
+    a.localeCompare(b),
+  );
+  let saldoAnterior = saldoInicial;
+  const filas = [];
+  for (const [key, { entradas, salidas, anio, mes }] of meses) {
+    const saldoActual = saldoAnterior + entradas - salidas;
+    const finDeMes = new Date(anio, mes, 0, 23, 59, 59);
+    const enMuestrarios = movimientos
+      .filter((m) => new Date(m.fecha) <= finDeMes)
+      .reduce((s, m) => s + m.variacionMuestrario, 0);
+    filas.push({
+      key,
+      anio,
+      mes,
+      saldoAnterior,
+      entradas,
+      salidas,
+      saldoActual,
+      enMuestrarios,
+    });
+    saldoAnterior = saldoActual;
+  }
+  return filas;
+}
+
+function MovimientosInventarioPanel({ producto, refetch }) {
+  const [verDetalle, setVerDetalle] = useState(false);
+  const [ajustando, setAjustando] = useState(false);
+  const [tipoAjuste, setTipoAjuste] = useState("PERDIDA");
+  const [cantidadAjuste, setCantidadAjuste] = useState("");
+  const [motivoAjuste, setMotivoAjuste] = useState("");
+
+  const { data, refetch: refetchMov } = useQuery(
+    GET_MOVIMIENTOS_INVENTARIO_PRODUCTO,
+    {
+      variables: { productoId: producto.id },
+      fetchPolicy: "network-only",
+    },
+  );
+  const movimientos = data?.movimientosInventarioProducto || [];
+  const [crearAjuste] = useMutation(CREAR_AJUSTE_INVENTARIO);
+
+  const kardex = useMemo(
+    () => calcularKardex(movimientos, Number(producto.enStock ?? 0)),
+    [movimientos, producto.enStock],
+  );
+
+  const handleAjuste = async () => {
+    if (!cantidadAjuste || Number(cantidadAjuste) <= 0)
+      return toast.warning("Ingrese una cantidad válida");
+    if (!motivoAjuste.trim()) return toast.warning("El motivo es obligatorio");
+    try {
+      await crearAjuste({
+        variables: {
+          input: {
+            empresaId: producto.empresaId,
+            productoId: producto.id,
+            tipoMovimiento: tipoAjuste,
+            cantidad: Number(cantidadAjuste),
+            motivo: motivoAjuste.trim(),
+          },
+        },
+      });
+      toast.success("Ajuste registrado");
+      setAjustando(false);
+      setCantidadAjuste("");
+      setMotivoAjuste("");
+      await refetchMov();
+      await refetch();
+    } catch (e) {
+      toast.error(e.message);
+    }
+  };
+
+  return (
+    <div className="border rounded p-3 bg-white mt-3" style={{ fontSize: 12 }}>
+      <div className="d-flex justify-content-between align-items-center mb-2">
+        <div className="fw-bold" style={{ fontSize: 13 }}>
+          📊 Movimientos de inventario
+        </div>
+        <button
+          className="btn btn-outline-danger btn-sm"
+          onClick={() => setAjustando(!ajustando)}
+        >
+          {ajustando ? "Cancelar" : "+ Registrar ajuste"}
+        </button>
+      </div>
+
+      {ajustando && (
+        <div className="border border-danger rounded p-2 mb-3 bg-light">
+          <div className="d-flex flex-wrap gap-2 align-items-end">
+            <div>
+              <label className="form-label mb-0">Tipo</label>
+              <select
+                className="form-select form-select-sm"
+                style={{ width: 140 }}
+                value={tipoAjuste}
+                onChange={(e) => setTipoAjuste(e.target.value)}
+              >
+                <option value="PERDIDA">Pérdida</option>
+                <option value="HALLAZGO">Hallazgo</option>
+              </select>
+            </div>
+            <div>
+              <label className="form-label mb-0">Cantidad</label>
+              <input
+                type="number"
+                className="form-control form-control-sm"
+                style={{ width: 90 }}
+                min="1"
+                value={cantidadAjuste}
+                onChange={(e) => setCantidadAjuste(e.target.value)}
+              />
+            </div>
+            <div style={{ flex: 1, minWidth: 220 }}>
+              <label className="form-label mb-0">Motivo (obligatorio)</label>
+              <input
+                type="text"
+                className="form-control form-control-sm"
+                placeholder="Ej: pieza extraviada en exhibición"
+                value={motivoAjuste}
+                onChange={(e) => setMotivoAjuste(e.target.value)}
+              />
+            </div>
+            <button className="btn btn-danger btn-sm" onClick={handleAjuste}>
+              Guardar ajuste
+            </button>
+          </div>
+        </div>
+      )}
+
+      {kardex.length === 0 ? (
+        <div className="text-muted">Sin movimientos registrados todavía.</div>
+      ) : (
+        <>
+          <table className="table table-sm mb-2" style={{ fontSize: 12 }}>
+            <thead>
+              <tr className="table-dark">
+                <th>Mes</th>
+                <th>Saldo Anterior</th>
+                <th>Entradas</th>
+                <th>Salidas</th>
+                <th>Saldo Actual</th>
+                <th>En Muestrarios</th>
+              </tr>
+            </thead>
+            <tbody>
+              {kardex.map((k) => (
+                <tr key={k.key}>
+                  <td>
+                    {MESES_NOMBRE[k.mes - 1]} {k.anio}
+                  </td>
+                  <td>{k.saldoAnterior}</td>
+                  <td className="text-success">+{k.entradas}</td>
+                  <td className="text-danger">-{k.salidas}</td>
+                  <td className="fw-bold">{k.saldoActual}</td>
+                  <td>{k.enMuestrarios}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+
+          <button
+            className="btn btn-link btn-sm p-0"
+            style={{ fontSize: 11 }}
+            onClick={() => setVerDetalle(!verDetalle)}
+          >
+            {verDetalle
+              ? "▲ Ocultar detalle de movimientos"
+              : "▼ Ver detalle de movimientos"}
+          </button>
+
+          {verDetalle && (
+            <table className="table table-sm mt-2" style={{ fontSize: 11 }}>
+              <thead>
+                <tr className="table-dark">
+                  <th>Fecha</th>
+                  <th>Tipo</th>
+                  <th>Referencia</th>
+                  <th>Cantidad</th>
+                </tr>
+              </thead>
+              <tbody>
+                {[...movimientos].reverse().map((m, i) => (
+                  <tr key={i}>
+                    <td>{new Date(m.fecha).toLocaleDateString("es-CO")}</td>
+                    <td>{m.tipo}</td>
+                    <td>{m.referencia}</td>
+                    <td>{m.cantidad}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </>
+      )}
+    </div>
   );
 }
 
@@ -692,6 +939,8 @@ function BomPanel({ producto, refetch }) {
           </table>
         </div>
       )}
+
+      <MovimientosInventarioPanel producto={producto} refetch={refetch} />
     </div>
   );
 }

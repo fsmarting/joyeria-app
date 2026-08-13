@@ -83,7 +83,23 @@ const calcCosteoAsync = async (p, prisma) => {
   return p.__costeo;
 };
 
+// ── NUEVO — visibilidad de inventario (Kardex) ──────────────────────
+// Mismo patrón de numeración que generarNumeroOrden/generarNumeroMuestrario.
+const generarNumeroAjuste = async (prisma, empresaId) => {
+  const anio = new Date().getFullYear();
+  const prefijo = `AJI-${anio}-`;
+  const count = await prisma.ajusteInventario.count({
+    where: { empresaId, numero: { startsWith: prefijo } },
+  });
+  const consecutivo = String(count + 1).padStart(3, "0");
+  return `${prefijo}${consecutivo}`;
+};
+
 export default {
+  AjusteInventario: {
+    fecha: (a) => (a.fecha ? new Date(a.fecha).toISOString() : null),
+  },
+
   Producto: {
     multiplicador: (p) => Number(p.multiplicador ?? 2.25),
     costoPiedras: async (p, _, { prisma }) =>
@@ -173,6 +189,150 @@ export default {
         select: { id: true },
       });
       return !!existe;
+    },
+
+    // ── NUEVO — visibilidad de inventario (Kardex) ────────────────────
+    // Junta en una sola lista, ordenada por fecha, TODO lo que mueve el
+    // stock de un producto sin importar su origen — producción entregada,
+    // venta directa, venta por cotización, venta desde muestrario, salida
+    // a muestrario, devolución de muestrario y ajustes manuales. El
+    // frontend arma el Kardex mensual/anual a partir de esta lista (mismo
+    // modelo que se validó en la simulación de Excel antes de programar
+    // esto: "Reglas" = el criterio de qué entra/sale/afecta "En
+    // Muestrarios" que aquí queda repartido en cada bloque de abajo).
+    movimientosInventarioProducto: async (
+      _,
+      { productoId },
+      { prisma, user },
+    ) => {
+      requireAuth(user);
+      const producto = await prisma.producto.findUnique({
+        where: { id: Number(productoId) },
+      });
+      if (!producto) throw new Error("Producto no existe");
+      validarEmpresa(producto.empresaId, user.empresaActualId);
+
+      const movimientos = [];
+
+      // 1. Producción entregada
+      const entregas = await prisma.entregaOrden.findMany({
+        where: {
+          deletedAt: null,
+          ordenProduccion: { productoId: Number(productoId) },
+        },
+        include: { ordenProduccion: true },
+      });
+      for (const e of entregas) {
+        movimientos.push({
+          fecha: e.fecha,
+          tipo: "Producción entregada",
+          referencia: e.numeroRemision || e.ordenProduccion.numero,
+          cantidad: e.cantidad,
+          entradaStock: e.cantidad,
+          salidaStock: 0,
+          variacionMuestrario: 0,
+        });
+      }
+
+      // 2. Ventas — directa / por cotización / desde muestrario
+      const ventas = await prisma.venta.findMany({
+        where: {
+          productoId: Number(productoId),
+          deletedAt: null,
+          estado: { codigo: { not: "ANUL" } },
+        },
+        include: {
+          cotizacionItem: { include: { cotizacion: true } },
+          muestrarioItem: { include: { muestrario: true } },
+        },
+      });
+      for (const v of ventas) {
+        if (v.muestrarioItemId) {
+          movimientos.push({
+            fecha: v.fecha,
+            tipo: "Venta desde muestrario",
+            referencia:
+              v.muestrarioItem?.muestrario?.numero || `Venta #${v.id}`,
+            cantidad: v.cantidad,
+            entradaStock: 0,
+            salidaStock: 0,
+            variacionMuestrario: -v.cantidad,
+          });
+        } else if (v.cotizacionItemId) {
+          movimientos.push({
+            fecha: v.fecha,
+            tipo: "Venta por cotización convertida",
+            referencia:
+              v.cotizacionItem?.cotizacion?.numero || `Venta #${v.id}`,
+            cantidad: v.cantidad,
+            entradaStock: 0,
+            salidaStock: v.cantidad,
+            variacionMuestrario: 0,
+          });
+        } else {
+          movimientos.push({
+            fecha: v.fecha,
+            tipo: "Venta directa",
+            referencia: `Venta #${v.id}`,
+            cantidad: v.cantidad,
+            entradaStock: 0,
+            salidaStock: v.cantidad,
+            variacionMuestrario: 0,
+          });
+        }
+      }
+
+      // 3. Salida a muestrario + 4. Devolución de muestrario
+      const itemsMuestrario = await prisma.muestrarioItem.findMany({
+        where: { productoId: Number(productoId), deletedAt: null },
+        include: { muestrario: true },
+      });
+      for (const it of itemsMuestrario) {
+        movimientos.push({
+          fecha: it.fechaEntrega,
+          tipo: "Salida a muestrario",
+          referencia: it.muestrario?.numero || `Muestrario #${it.muestrarioId}`,
+          cantidad: it.cantidadEntregada,
+          entradaStock: 0,
+          salidaStock: it.cantidadEntregada,
+          variacionMuestrario: it.cantidadEntregada,
+        });
+        if (it.cantidadDevuelta > 0) {
+          movimientos.push({
+            fecha: it.muestrario?.fechaCierre || it.fechaEntrega,
+            tipo: "Devolución de muestrario",
+            referencia:
+              it.muestrario?.numero || `Muestrario #${it.muestrarioId}`,
+            cantidad: it.cantidadDevuelta,
+            entradaStock: it.cantidadDevuelta,
+            salidaStock: 0,
+            variacionMuestrario: -it.cantidadDevuelta,
+          });
+        }
+      }
+
+      // 5. Ajustes de inventario (pérdida / hallazgo)
+      const ajustes = await prisma.ajusteInventario.findMany({
+        where: { productoId: Number(productoId), deletedAt: null },
+      });
+      for (const a of ajustes) {
+        const esHallazgo = a.tipoMovimiento === "HALLAZGO";
+        movimientos.push({
+          fecha: a.fecha,
+          tipo: esHallazgo ? "Ajuste — hallazgo" : "Ajuste — pérdida",
+          referencia: a.numero,
+          cantidad: a.cantidad,
+          entradaStock: esHallazgo ? a.cantidad : 0,
+          salidaStock: esHallazgo ? 0 : a.cantidad,
+          variacionMuestrario: 0,
+        });
+      }
+
+      movimientos.sort((a, b) => new Date(a.fecha) - new Date(b.fecha));
+      return movimientos.map((m) => ({
+        ...m,
+        fecha: new Date(m.fecha).toISOString(),
+      }));
     },
   },
 
@@ -300,6 +460,57 @@ export default {
         data: { deletedAt: new Date() },
       });
       return true;
+    },
+
+    // ── NUEVO — visibilidad de inventario (Kardex): ajuste manual de
+    // stock por pérdida o hallazgo. A diferencia de una venta, un ajuste
+    // manual siempre exige un motivo por escrito — nunca se permite un
+    // cambio de stock sin explicación (mismo principio que la liquidación
+    // de muestrario con faltante).
+    crearAjusteInventario: async (_, { input }, { prisma, user }) => {
+      requireAuth(user);
+      const { empresaId, productoId, tipoMovimiento, cantidad, motivo } = input;
+      validarEmpresa(empresaId, user.empresaActualId);
+      if (!["PERDIDA", "HALLAZGO"].includes(tipoMovimiento)) {
+        throw new Error("Tipo de movimiento inválido");
+      }
+      if (!motivo?.trim()) throw new Error("El motivo es obligatorio");
+      if (Number(cantidad) <= 0)
+        throw new Error("La cantidad debe ser mayor a 0");
+
+      const producto = await prisma.producto.findUnique({
+        where: { id: Number(productoId) },
+      });
+      if (!producto) throw new Error("Producto no existe");
+      validarEmpresa(producto.empresaId, user.empresaActualId);
+
+      if (tipoMovimiento === "PERDIDA" && producto.enStock < Number(cantidad)) {
+        throw new Error(
+          `No puede registrar una pérdida mayor al stock actual. Disponible: ${producto.enStock}`,
+        );
+      }
+
+      const numero = await generarNumeroAjuste(prisma, Number(empresaId));
+      const delta =
+        tipoMovimiento === "HALLAZGO" ? Number(cantidad) : -Number(cantidad);
+
+      return prisma.$transaction(async (tx) => {
+        await tx.producto.update({
+          where: { id: Number(productoId) },
+          data: { enStock: { increment: delta } },
+        });
+        return tx.ajusteInventario.create({
+          data: {
+            empresaId: Number(empresaId),
+            productoId: Number(productoId),
+            numero,
+            tipoMovimiento,
+            cantidad: Number(cantidad),
+            motivo: motivo.trim(),
+            usu_creacion: user.codigo,
+          },
+        });
+      });
     },
   },
 };

@@ -27,6 +27,7 @@ model Empresa {
   ordenesProduccion OrdenProduccion[] @relation("OrdenProduccion_empresa")
   muestrarios Muestrario[] @relation("Muestrario_Empresa")
   otizaciones Cotizacion[] @relation("Cotizacion_Empresa")
+  ajustesInventario AjusteInventario[] @relation("AjusteInventario_Empresa")
 }
 
 
@@ -252,6 +253,7 @@ model Producto {
   muestrarioItems MuestrarioItem[] @relation("MuestrarioItem_Producto")
   convsPiezasInteres ConversacionProducto[] @relation("ConversacionProducto_Prod")
   cotizacionItems CotizacionItem[] @relation("CotizacionItem_Producto")
+  ajustesInventario AjusteInventario[] @relation("AjusteInventario_Producto")
   @@unique([empresaId, referencia])
   @@index([empresaId, categoriaId])
 }
@@ -559,12 +561,45 @@ model MuestrarioItem {
   productoId Int
   cantidadEntregada Int @default(1)
   cantidadDevuelta Int @default(0)
+  // ── NUEVO — fecha en que ESTE producto entró al muestrario. Antes solo
+  // existía Muestrario.fechaSalida (fecha de creación del muestrario
+  // completo) — si un producto se agregaba después con
+  // agregarItemMuestrario, no había forma de saber cuándo salió ese
+  // producto en particular. Hace falta para atribuir correctamente el mes
+  // en el Kardex de inventario (ver conversación sobre visibilidad de
+  // inventario). Los registros existentes antes de esta migración quedan
+  // con la fecha de la migración (no hay forma de recuperar la fecha real).
+  fechaEntrega DateTime @default(now())
   version Int @default(1)
   deletedAt DateTime?
   muestrario Muestrario @relation("MuestrarioItem_Muestrario", fields: [muestrarioId], references: [id], onDelete: Cascade)
   producto Producto @relation("MuestrarioItem_Producto", fields: [productoId], references: [id])
   ventas Venta[] @relation("Venta_MuestrarioItem")
   @@index([muestrarioId])
+}
+
+// ── NUEVO — ajustes manuales de inventario (pérdida o hallazgo) que no
+// vienen de ningún flujo de negocio existente (venta, producción,
+// muestrario). Todo ajuste requiere motivo — nunca se permite un cambio de
+// stock sin explicación por escrito (ver conversación sobre visibilidad de
+// inventario). Mismo patrón de numeración que OrdenProduccion/Cotizacion/
+// Muestrario (numero autogenerado AJI-{año}-{consecutivo}, sin restricción
+// unique en BD, ver generarNumeroAjuste en producto.resolvers.js).
+model AjusteInventario {
+  id Int @id @default(autoincrement())
+  empresaId Int
+  productoId Int
+  numero String @db.VarChar(20)
+  tipoMovimiento String @db.VarChar(20) // PERDIDA | HALLAZGO
+  cantidad Int
+  motivo String @db.VarChar(500)
+  fecha DateTime @default(now())
+  usu_creacion String? @db.VarChar(30)
+  version Int @default(1)
+  deletedAt DateTime?
+  empresa Empresa @relation("AjusteInventario_Empresa", fields: [empresaId], references: [id])
+  producto Producto @relation("AjusteInventario_Producto", fields: [productoId], references: [id])
+  @@index([empresaId, productoId])
 }
 
 model Cotizacion {

@@ -48,6 +48,32 @@ export default /* GraphQL */ `
     pageInfo: PageInfo!
   }
 
+  # ── NUEVO — visibilidad de inventario (Kardex) ──────────────────────
+  type AjusteInventario {
+    id: Int!
+    empresaId: Int!
+    productoId: Int!
+    numero: String!
+    tipoMovimiento: String!
+    cantidad: Int!
+    motivo: String!
+    fecha: String!
+    version: Int!
+  }
+  # Una fila unificada de movimiento de stock de un producto, sin importar
+  # su origen (producción, venta, muestrario o ajuste manual) — pensada
+  # para que el frontend arme el Kardex mensual sin tener que combinar
+  # varias consultas distintas.
+  type MovimientoInventario {
+    fecha: String!
+    tipo: String!
+    referencia: String!
+    cantidad: Int!
+    entradaStock: Int!
+    salidaStock: Int!
+    variacionMuestrario: Int!
+  }
+
   input ProductoInput {
     empresaId: Int!
     referencia: String!
@@ -93,6 +119,13 @@ export default /* GraphQL */ `
     desperdicio: Float
     version: Int!
   }
+  input AjusteInventarioInput {
+    empresaId: Int!
+    productoId: Int!
+    tipoMovimiento: String!
+    cantidad: Int!
+    motivo: String!
+  }
 
   extend type Query {
     productosFiltradosCursor(
@@ -104,6 +137,7 @@ export default /* GraphQL */ `
     ): ProductoConnection!
     obtenerProductos: [Producto!]!
     validarCodigoProducto(empresaId: Int!, referencia: String!): Boolean!
+    movimientosInventarioProducto(productoId: Int!): [MovimientoInventario!]!
   }
   extend type Mutation {
     crearProducto(input: ProductoInput!): Producto
@@ -112,5 +146,6 @@ export default /* GraphQL */ `
     agregarInsumoProducto(input: ProductoPiedraInput!): ProductoPiedra!
     actualizarInsumoProducto(input: ProductoPiedraUpdateInput!): ProductoPiedra!
     eliminarInsumoProducto(id: Int!): Boolean!
+    crearAjusteInventario(input: AjusteInventarioInput!): AjusteInventario!
   }
 `;
