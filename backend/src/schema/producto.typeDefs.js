@@ -72,6 +72,10 @@ export default /* GraphQL */ `
     entradaStock: Int!
     salidaStock: Int!
     variacionMuestrario: Int!
+    # ── NUEVO — quién tiene la pieza hoy. Solo viene lleno en movimientos
+    # de muestrario (Salida/Devolución); null en producción, ventas y
+    # ajustes — ahí no aplica.
+    vendedora: String
   }
 
   input ProductoInput {

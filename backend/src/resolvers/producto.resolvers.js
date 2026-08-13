@@ -231,6 +231,7 @@ export default {
           entradaStock: e.cantidad,
           salidaStock: 0,
           variacionMuestrario: 0,
+          vendedora: null,
         });
       }
 
@@ -243,7 +244,9 @@ export default {
         },
         include: {
           cotizacionItem: { include: { cotizacion: true } },
-          muestrarioItem: { include: { muestrario: true } },
+          muestrarioItem: {
+            include: { muestrario: { include: { vendedora: true } } },
+          },
         },
       });
       for (const v of ventas) {
@@ -257,6 +260,7 @@ export default {
             entradaStock: 0,
             salidaStock: 0,
             variacionMuestrario: -v.cantidad,
+            vendedora: v.muestrarioItem?.muestrario?.vendedora?.nombre || null,
           });
         } else if (v.cotizacionItemId) {
           movimientos.push({
@@ -268,6 +272,7 @@ export default {
             entradaStock: 0,
             salidaStock: v.cantidad,
             variacionMuestrario: 0,
+            vendedora: null,
           });
         } else {
           movimientos.push({
@@ -278,6 +283,7 @@ export default {
             entradaStock: 0,
             salidaStock: v.cantidad,
             variacionMuestrario: 0,
+            vendedora: null,
           });
         }
       }
@@ -285,9 +291,10 @@ export default {
       // 3. Salida a muestrario + 4. Devolución de muestrario
       const itemsMuestrario = await prisma.muestrarioItem.findMany({
         where: { productoId: Number(productoId), deletedAt: null },
-        include: { muestrario: true },
+        include: { muestrario: { include: { vendedora: true } } },
       });
       for (const it of itemsMuestrario) {
+        const nombreVendedora = it.muestrario?.vendedora?.nombre || null;
         movimientos.push({
           fecha: it.fechaEntrega,
           tipo: "Salida a muestrario",
@@ -296,6 +303,7 @@ export default {
           entradaStock: 0,
           salidaStock: it.cantidadEntregada,
           variacionMuestrario: it.cantidadEntregada,
+          vendedora: nombreVendedora,
         });
         if (it.cantidadDevuelta > 0) {
           movimientos.push({
@@ -307,6 +315,7 @@ export default {
             entradaStock: it.cantidadDevuelta,
             salidaStock: 0,
             variacionMuestrario: -it.cantidadDevuelta,
+            vendedora: nombreVendedora,
           });
         }
       }
@@ -325,6 +334,7 @@ export default {
           entradaStock: esHallazgo ? a.cantidad : 0,
           salidaStock: esHallazgo ? 0 : a.cantidad,
           variacionMuestrario: 0,
+          vendedora: null,
         });
       }
 

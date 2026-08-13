@@ -90,6 +90,7 @@ export const GET_MOVIMIENTOS_INVENTARIO_PRODUCTO = gql`
       entradaStock
       salidaStock
       variacionMuestrario
+      vendedora
     }
   }
 `;
