@@ -9,6 +9,11 @@ export default /* GraphQL */ `
     nota: String
     version: Int!
     producto: Producto
+    # ── FIX — faltaba este campo. venta.resolvers.js ya incluye
+    # cotizacionItem.cotizacion vía Prisma (para origenLabel), pero sin
+    # esto en el schema, GraphQL rechazaba la consulta antes de llegar al
+    # resolver: "Cannot query field 'cotizacion' on type 'CotizacionItem'".
+    cotizacion: Cotizacion
   }
   type Cotizacion {
     id: Int!
