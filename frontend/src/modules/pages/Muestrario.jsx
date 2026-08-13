@@ -166,6 +166,13 @@ function MuestrarioPanel({ muestrario, refetch }) {
   // busca por referencia/nombre igual que ya hace el resolver para los
   // listados principales (parámetro "busqueda"), con debounce de 400ms
   // para no disparar una consulta por cada tecla.
+  //
+  // ── CAMBIO — con el campo vacío ya no se deja el selector deshabilitado
+  // esperando que el usuario escriba: se cargan de una los primeros 30
+  // productos (orden por referencia) para poder ver/navegar el catálogo
+  // sin tener que saber el código de memoria. Si escribe algo, esa lista
+  // se reemplaza por los resultados de la búsqueda — mismo selector, sin
+  // un botón ni un modo aparte.
   const [buscarProducto, setBuscarProducto] = useState("");
   const [buscarProductoDebounced, setBuscarProductoDebounced] = useState("");
   useEffect(() => {
@@ -176,7 +183,6 @@ function MuestrarioPanel({ muestrario, refetch }) {
   const { data: dataProds } = useQuery(GET_PRODUCTOS_CURSOR, {
     variables: { first: 30, busqueda: buscarProductoDebounced },
     fetchPolicy: "network-only",
-    skip: buscarProductoDebounced.trim().length < 1,
   });
   const productos = (dataProds?.productosFiltradosCursor?.edges || []).map(
     (e) => e.node,
@@ -483,13 +489,8 @@ function MuestrarioPanel({ muestrario, refetch }) {
                 style={{ width: 240 }}
                 value={productoId}
                 onChange={(e) => setProductoId(e.target.value)}
-                disabled={buscarProductoDebounced.trim().length < 1}
               >
-                <option value="">
-                  {buscarProductoDebounced.trim().length < 1
-                    ? "Escriba para buscar..."
-                    : "Seleccione..."}
-                </option>
+                <option value="">Seleccione...</option>
                 {productos
                   .filter((p) => !items.find((i) => i.productoId === p.id))
                   .map((p) => (
@@ -499,6 +500,11 @@ function MuestrarioPanel({ muestrario, refetch }) {
                     </option>
                   ))}
               </select>
+              {dataProds?.productosFiltradosCursor?.pageInfo?.hasNextPage && (
+                <div className="text-muted" style={{ fontSize: 10 }}>
+                  Mostrando los primeros 30 — siga escribiendo para afinar
+                </div>
+              )}
             </div>
             <div>
               <label className="form-label mb-0">Cantidad</label>
