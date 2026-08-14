@@ -31,6 +31,7 @@ export const GET_PIEDRAS_CURSOR = gql`
             id
             nombre
           }
+          stockDisponible
         }
         cursor
       }
@@ -66,5 +67,21 @@ export const ELIMINAR_PIEDRA = gql`
 export const VALIDAR_CODIGO_PIEDRA = gql`
   query ValidarCodigoPiedra($empresaId: Int!, $codigo: String!) {
     validarCodigoPiedra(empresaId: $empresaId, codigo: $codigo)
+  }
+`;
+
+// ── NUEVO — visibilidad de inventario de insumos (Kardex) ───────────
+export const GET_MOVIMIENTOS_INVENTARIO_PIEDRA = gql`
+  query MovimientosInventarioPiedra($piedraId: Int!) {
+    movimientosInventarioPiedra(piedraId: $piedraId) {
+      fecha
+      tipo
+      referencia
+      cantidad
+      entradaStock
+      salidaStock
+      variacionCustodia
+      joyero
+    }
   }
 `;
