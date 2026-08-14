@@ -252,6 +252,33 @@ function MovimientosInventarioPanel({ producto, refetch }) {
     [movimientos, producto.enStock],
   );
 
+  // ── NUEVO — dónde está hoy el "En Muestrarios" del Kardex. Se agrupa
+  // por muestrario (referencia) sumando variacionMuestrario — solo los
+  // movimientos de muestrario mueven esa columna, así que agrupar TODO
+  // el histórico ya da, sin filtrar por tipo, el pendiente real de cada
+  // muestrario. Los que ya cuadraron (pendiente <= 0) no se muestran.
+  const pendientePorMuestrario = useMemo(() => {
+    const porReferencia = new Map();
+    for (const m of movimientos) {
+      if (!m.variacionMuestrario) continue;
+      if (!porReferencia.has(m.referencia)) {
+        porReferencia.set(m.referencia, {
+          referencia: m.referencia,
+          vendedora: null,
+          pendiente: 0,
+          fechaSalida: null,
+        });
+      }
+      const acc = porReferencia.get(m.referencia);
+      acc.pendiente += m.variacionMuestrario;
+      if (m.tipo === "Salida a muestrario") {
+        acc.fechaSalida = m.fecha;
+        acc.vendedora = m.vendedora || acc.vendedora;
+      }
+    }
+    return Array.from(porReferencia.values()).filter((x) => x.pendiente > 0);
+  }, [movimientos]);
+
   const handleAjuste = async () => {
     if (!cantidadAjuste || Number(cantidadAjuste) <= 0)
       return toast.warning("Ingrese una cantidad válida");
@@ -367,6 +394,38 @@ function MovimientosInventarioPanel({ producto, refetch }) {
             </tbody>
           </table>
 
+          {pendientePorMuestrario.length > 0 && (
+            <div className="mb-3">
+              <div className="text-muted mb-1" style={{ fontSize: 11 }}>
+                📍 Pendiente por muestrario (hoy)
+              </div>
+              <table className="table table-sm mb-0" style={{ fontSize: 12 }}>
+                <thead>
+                  <tr className="table-dark">
+                    <th>Muestrario</th>
+                    <th>Vendedora</th>
+                    <th>Cantidad pendiente</th>
+                    <th>Fecha salida</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {pendientePorMuestrario.map((p) => (
+                    <tr key={p.referencia}>
+                      <td>{p.referencia}</td>
+                      <td>{p.vendedora || "-"}</td>
+                      <td className="fw-bold">{p.pendiente}</td>
+                      <td>
+                        {p.fechaSalida
+                          ? new Date(p.fechaSalida).toLocaleDateString("es-CO")
+                          : "-"}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
           <button
             className="btn btn-link btn-sm p-0"
             style={{ fontSize: 11 }}
@@ -388,14 +447,34 @@ function MovimientosInventarioPanel({ producto, refetch }) {
                 </tr>
               </thead>
               <tbody>
-                {[...movimientos].reverse().map((m, i) => (
-                  <tr key={i}>
-                    <td>{new Date(m.fecha).toLocaleDateString("es-CO")}</td>
-                    <td>{m.tipo}</td>
-                    <td>{m.referencia}</td>
-                    <td>{m.cantidad}</td>
-                  </tr>
-                ))}
+                {/* ── NUEVO — mismo signo/color que ya usa la tabla mensual:
+                    salidas en rojo con "-", entradas en verde con "+" — antes
+                    esta tabla mostraba siempre el valor absoluto de
+                    `cantidad`, sin importar si era una entrada o una salida
+                    de stock. Mismo criterio aplicado en Piedra.jsx. */}
+                {[...movimientos].reverse().map((m, i) => {
+                  const esSalida = m.salidaStock > 0;
+                  const esEntrada = m.entradaStock > 0;
+                  return (
+                    <tr key={i}>
+                      <td>{new Date(m.fecha).toLocaleDateString("es-CO")}</td>
+                      <td>{m.tipo}</td>
+                      <td>{m.referencia}</td>
+                      <td
+                        className={
+                          esSalida
+                            ? "text-danger"
+                            : esEntrada
+                              ? "text-success"
+                              : ""
+                        }
+                      >
+                        {esSalida ? "-" : esEntrada ? "+" : ""}
+                        {m.cantidad}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           )}
