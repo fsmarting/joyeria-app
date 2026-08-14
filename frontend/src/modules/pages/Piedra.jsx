@@ -36,6 +36,15 @@ const MESES_NOMBRE = [
   "Diciembre",
 ];
 
+// ── NUEVO — Compras y Devoluciones separadas dentro de "Entradas" ────
+// Antes "Entradas" era un solo número que sumaba compras nuevas y
+// devoluciones de órdenes juntas — no se podía saber, sin abrir el
+// detalle, cuánto de ese número era material nuevo comprado y cuánto era
+// material propio que un joyero regresó. Ahora se separan usando el
+// campo `tipo` que ya trae cada movimiento del backend (no hace falta
+// tocar el resolver) — el total de "Entradas" para el cálculo del saldo
+// sigue siendo compras + devoluciones, solo que ahora también se ve
+// desglosado en la tabla.
 function calcularKardexInsumo(movimientos, saldoActualHoy) {
   const totalEntradas = movimientos.reduce((s, m) => s + m.entradaStock, 0);
   const totalSalidas = movimientos.reduce((s, m) => s + m.salidaStock, 0);
@@ -47,14 +56,17 @@ function calcularKardexInsumo(movimientos, saldoActualHoy) {
     const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
     if (!porMes.has(key)) {
       porMes.set(key, {
-        entradas: 0,
+        compras: 0,
+        devoluciones: 0,
         salidas: 0,
         anio: d.getFullYear(),
         mes: d.getMonth() + 1,
       });
     }
     const acc = porMes.get(key);
-    acc.entradas += m.entradaStock;
+    if (m.tipo === "Compra") acc.compras += m.entradaStock;
+    else if (m.tipo === "Devolución de orden")
+      acc.devoluciones += m.entradaStock;
     acc.salidas += m.salidaStock;
   }
 
@@ -63,7 +75,8 @@ function calcularKardexInsumo(movimientos, saldoActualHoy) {
   );
   let saldoAnterior = saldoInicial;
   const filas = [];
-  for (const [key, { entradas, salidas, anio, mes }] of meses) {
+  for (const [key, { compras, devoluciones, salidas, anio, mes }] of meses) {
+    const entradas = compras + devoluciones;
     const saldoActual = saldoAnterior + entradas - salidas;
     const finDeMes = new Date(anio, mes, 0, 23, 59, 59);
     const enPoderJoyeros = movimientos
@@ -74,7 +87,8 @@ function calcularKardexInsumo(movimientos, saldoActualHoy) {
       anio,
       mes,
       saldoAnterior,
-      entradas,
+      compras,
+      devoluciones,
       salidas,
       saldoActual,
       enPoderJoyeros,
@@ -145,7 +159,8 @@ function MovimientosInventarioInsumoPanel({ piedra }) {
               <tr className="table-dark">
                 <th>Mes</th>
                 <th>Saldo Anterior</th>
-                <th>Entradas</th>
+                <th>Compras</th>
+                <th>Devoluciones</th>
                 <th>Salidas</th>
                 <th>Saldo Actual</th>
                 <th>En poder de joyeros</th>
@@ -158,7 +173,10 @@ function MovimientosInventarioInsumoPanel({ piedra }) {
                     {MESES_NOMBRE[k.mes - 1]} {k.anio}
                   </td>
                   <td>{fmtQ(k.saldoAnterior, unidad)}</td>
-                  <td className="text-success">+{fmtQ(k.entradas, unidad)}</td>
+                  <td className="text-success">+{fmtQ(k.compras, unidad)}</td>
+                  <td className="text-success">
+                    +{fmtQ(k.devoluciones, unidad)}
+                  </td>
                   <td className="text-danger">-{fmtQ(k.salidas, unidad)}</td>
                   <td className="fw-bold">{fmtQ(k.saldoActual, unidad)}</td>
                   <td>{fmtQ(k.enPoderJoyeros, unidad)}</td>
