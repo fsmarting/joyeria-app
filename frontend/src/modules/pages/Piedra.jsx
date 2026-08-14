@@ -239,15 +239,35 @@ function MovimientosInventarioInsumoPanel({ piedra }) {
                 </tr>
               </thead>
               <tbody>
-                {[...movimientos].reverse().map((m, i) => (
-                  <tr key={i}>
-                    <td>{new Date(m.fecha).toLocaleDateString("es-CO")}</td>
-                    <td>{m.tipo}</td>
-                    <td>{m.referencia}</td>
-                    <td>{fmtQ(m.cantidad, unidad)}</td>
-                    <td>{m.joyero || "-"}</td>
-                  </tr>
-                ))}
+                {/* ── NUEVO — mismo signo/color que ya usa la tabla mensual:
+                    salidas en rojo con "-", entradas (compra o devolución)
+                    en verde con "+" — antes esta tabla mostraba siempre el
+                    valor absoluto de `cantidad`, sin importar si era una
+                    entrada o una salida de insumo. */}
+                {[...movimientos].reverse().map((m, i) => {
+                  const esSalida = m.salidaStock > 0;
+                  const esEntrada = m.entradaStock > 0;
+                  return (
+                    <tr key={i}>
+                      <td>{new Date(m.fecha).toLocaleDateString("es-CO")}</td>
+                      <td>{m.tipo}</td>
+                      <td>{m.referencia}</td>
+                      <td
+                        className={
+                          esSalida
+                            ? "text-danger"
+                            : esEntrada
+                              ? "text-success"
+                              : ""
+                        }
+                      >
+                        {esSalida ? "-" : esEntrada ? "+" : ""}
+                        {fmtQ(m.cantidad, unidad)}
+                      </td>
+                      <td>{m.joyero || "-"}</td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           )}
