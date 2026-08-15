@@ -39,13 +39,17 @@ const calcCosteoAsync = async (p, prisma) => {
     let costoUnitario = Number(pp.costoEstandardUnitario);
 
     if (esOro) {
+      // ── CAMBIO — CompraInsumo ya no trae empresaId/fecha propios (ahora
+      // viven en su cabeza Compra, ver "deber ser" de separar cabeza/
+      // detalle en Compras de Insumos) — se filtra/ordena vía la relación
+      // `compra`, mismo criterio que piedra.resolvers.js.
       const ultimoLote = await prisma.compraInsumo.findFirst({
         where: {
           piedraId: pp.piedraId,
-          empresaId: p.empresaId,
           deletedAt: null,
+          compra: { empresaId: p.empresaId, deletedAt: null },
         },
-        orderBy: { fecha: "desc" },
+        orderBy: { compra: { fecha: "desc" } },
       });
       if (ultimoLote) costoUnitario = Number(ultimoLote.costoUnitario);
     }
