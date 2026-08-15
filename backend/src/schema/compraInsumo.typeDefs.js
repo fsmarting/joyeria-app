@@ -1,53 +1,76 @@
 export default /* GraphQL */ `
-  type CompraInsumo {
+  # ── NUEVO — cabeza de una compra de insumos. Antes numero/fecha/
+  # proveedor/nota vivían en la misma fila que el insumo comprado
+  # (CompraInsumo), lo que obligaba a una piedra por compra. Ahora Compra
+  # es la cabeza y CompraInsumo el detalle — mismo patrón que
+  # Muestrario/MuestrarioItem y OrdenProduccion/DetalleOrdenProduccion.
+  type Compra {
     id: Int!
     empresaId: Int!
     numero: String!
-    piedraId: Int!
     proveedorId: Int
     fecha: String!
+    nota: String
+    version: Int!
+    proveedor: Tercero
+    items: [CompraInsumo!]!
+    totalItems: Int!
+    valorTotal: Float!
+  }
+  type CompraEdge {
+    node: Compra!
+    cursor: ID!
+  }
+  type CompraConnection {
+    edges: [CompraEdge!]!
+    pageInfo: PageInfo!
+  }
+
+  # ── CAMBIO — ahora es el detalle de una Compra (perdió numero/fecha/
+  # proveedorId/nota, que subieron a la cabeza). Sigue siendo el "lote"
+  # individual de un insumo — DetalleOrdenProduccion.compraInsumoId y
+  # MovimientoInsumoOrden.compraInsumoId lo siguen usando exactamente
+  # igual que antes.
+  type CompraInsumo {
+    id: Int!
+    compraId: Int!
+    piedraId: Int!
     cantidad: Float!
     costoUnitario: Float!
     costoTotal: Float!
     cantidadDisponible: Float!
-    nota: String
     version: Int!
+    compra: Compra
     piedra: Piedra
-    proveedor: Tercero
   }
 
-  type CompraInsumoEdge {
-    node: CompraInsumo!
-    cursor: ID!
-  }
-  type CompraInsumoConnection {
-    edges: [CompraInsumoEdge!]!
-    pageInfo: PageInfo!
-  }
-
-  input CompraInsumoInput {
+  input CompraInput {
     empresaId: Int!
     numero: String!
-    piedraId: Int!
     proveedorId: Int
     fecha: String!
-    cantidad: Float!
-    costoUnitario: Float!
-    costoTotal: Float!
     nota: String
     version: Int!
   }
-  input CompraInsumoUpdateInput {
+  input CompraUpdateInput {
     id: Int!
     empresaId: Int!
     numero: String!
-    piedraId: Int!
     proveedorId: Int
     fecha: String!
+    nota: String
+    version: Int!
+  }
+  input CompraInsumoItemInput {
+    compraId: Int!
+    piedraId: Int!
     cantidad: Float!
     costoUnitario: Float!
-    costoTotal: Float!
-    nota: String
+  }
+  input CompraInsumoItemUpdateInput {
+    id: Int!
+    cantidad: Float!
+    costoUnitario: Float!
     version: Int!
   }
 
@@ -58,13 +81,18 @@ export default /* GraphQL */ `
       orden: [String]
       direccion: [String]
       busqueda: String
-    ): CompraInsumoConnection!
-    obtenerCompras: [CompraInsumo!]!
+    ): CompraConnection!
+    obtenerCompras: [Compra!]!
+    # Sigue a nivel de detalle (los lotes con stock de un insumo) — no
+    # cambia lo que ya usa OrdenProduccion para elegir de dónde enviar.
     comprasPorPiedra(piedraId: Int!): [CompraInsumo!]!
   }
   extend type Mutation {
-    crearCompraInsumo(input: CompraInsumoInput!): CompraInsumo
-    actualizarCompraInsumo(input: CompraInsumoUpdateInput!): CompraInsumo!
-    eliminarCompraInsumo(id: Int!): Boolean!
+    crearCompra(input: CompraInput!): Compra
+    actualizarCompra(input: CompraUpdateInput!): Compra!
+    eliminarCompra(id: Int!): Boolean!
+    agregarItemCompra(input: CompraInsumoItemInput!): CompraInsumo!
+    actualizarItemCompra(input: CompraInsumoItemUpdateInput!): CompraInsumo!
+    eliminarItemCompra(id: Int!): Boolean!
   }
 `;

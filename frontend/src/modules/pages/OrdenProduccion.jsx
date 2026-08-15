@@ -65,7 +65,7 @@ function MovimientosHistorial({ movimientos, onImprimir }) {
           <tr key={m.id}>
             <td><span className={`badge ${BADGE_MOVIMIENTO[m.tipoMovimiento]||'bg-secondary'}`}>{LABEL_MOVIMIENTO[m.tipoMovimiento]||m.tipoMovimiento}</span></td>
             <td>{m.numeroRemision || <span className="text-muted">—</span>}</td>
-            <td>{m.compraInsumo?.numero || '—'}</td>
+            <td>{m.compraInsumo?.compra?.numero || '—'}</td>
             <td>{fmtQ(m.cantidad)}</td>
             <td>{fmt(m.valor)}</td>
             <td>{fmtF(m.fecha)}</td>
@@ -119,10 +119,10 @@ function MovimientoForm({ detalle, onRegistrar, onCancelar }) {
           <label className="form-label mb-0">Lote</label>
           <select className="form-select form-select-sm" style={{width:200}} value={compraSelId} onChange={e=>setCompra(e.target.value)}>
             <option value={String(detalle.compraInsumoId)}>
-              {detalle.compraInsumo?.numero} (lote inicial)
+              {detalle.compraInsumo?.compra?.numero} (lote inicial)
             </option>
             {lotes.filter(l=>String(l.id)!==String(detalle.compraInsumoId)).map(l=>
-              <option key={l.id} value={l.id}>{l.numero} · Disp: {fmtQ(l.cantidadDisponible, unidad)}</option>
+              <option key={l.id} value={l.id}>{l.compra?.numero} · Disp: {fmtQ(l.cantidadDisponible, unidad)}</option>
             )}
           </select>
         </div>
@@ -156,7 +156,7 @@ function DetalleRow({ d, ordenCompleta, onRegistrarMovimiento, onEliminar, onImp
           <strong>{d.piedra?.codigo}</strong> {d.piedra?.nombre}
           {esOro && <span className="badge bg-warning text-dark ms-1" style={{fontSize:9}}>🥇</span>}
         </td>
-        <td style={{fontSize:11}}>{d.compraInsumo?.numero} · {fmtF(d.compraInsumo?.fecha)}</td>
+        <td style={{fontSize:11}}>{d.compraInsumo?.compra?.numero} · {fmtF(d.compraInsumo?.compra?.fecha)}</td>
         <td>{fmtQ(d.cantidad,u)}</td>
         <td>{fmt(d.costoUnitario)}</td>
         <td>{fmt(d.costoTotal)}</td>
@@ -361,7 +361,7 @@ function SugerenciaRow({ bom, cantidadProgramada, onConfirmar, checked, onToggle
       <td>
         <select className="form-select form-select-sm" style={{width:190}} value={compraSelId} onChange={e=>setCompra(e.target.value)}>
           <option value="">Seleccione lote...</option>
-          {lotes.map(c=><option key={c.id} value={c.id}>{c.numero} · {fmt(c.costoUnitario)}/{unidad} · Disp: {fmtQ(c.cantidadDisponible,unidad)}</option>)}
+          {lotes.map(c=><option key={c.id} value={c.id}>{c.compra?.numero} · {fmt(c.costoUnitario)}/{unidad} · Disp: {fmtQ(c.cantidadDisponible,unidad)}</option>)}
           {lotes.length===0 && <option disabled>Sin stock</option>}
         </select>
       </td>
@@ -564,7 +564,7 @@ function DetallesPanel({ orden, refetch }) {
       const u = det.piedra?.unidad?.nombre || '';
       return `<tr>
         <td>${det.piedra?.codigo||''} — ${det.piedra?.nombre||''}</td>
-        <td>${mov.compraInsumo?.numero||'—'}</td>
+        <td>${mov.compraInsumo?.compra?.numero||'—'}</td>
         <td>${LABEL_MOVIMIENTO[mov.tipoMovimiento]||mov.tipoMovimiento}</td>
         <td>${Number(mov.cantidad).toLocaleString('es-CO',{maximumFractionDigits:4})} ${u}</td>
         <td>${fmt(mov.valor)}</td>

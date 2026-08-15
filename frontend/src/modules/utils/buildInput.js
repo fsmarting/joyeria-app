@@ -84,15 +84,18 @@ const ALLOWED_INPUT = {
     "activo",
     "version",
   ],
-  comprainsumo: [
+  // ── CAMBIO — "comprainsumo" (empresaId/numero/piedraId/proveedorId/
+  // fecha/cantidad/costoUnitario/nota) se partió en cabeza + detalle:
+  // "compra" es la cabeza (este EntidadGenerica genérico), los insumos
+  // (piedraId/cantidad/costoUnitario) se agregan aparte desde el panel
+  // de detalle de CompraInsumo.jsx, con sus propias mutations
+  // (agregarItemCompra/actualizarItemCompra) — no pasan por buildInput,
+  // mismo criterio que "muestrarioitem" (tampoco está en esta lista).
+  compra: [
     "empresaId",
     "numero",
-    "piedraId",
     "proveedorId",
     "fecha",
-    "cantidad",
-    "costoUnitario",
-    "costoTotal",
     "nota",
     "version",
   ],
@@ -217,13 +220,9 @@ const NUMERIC_FIELDS = {
     "costoEstandardPorUnidad",
     "version",
   ],
-  comprainsumo: [
+  compra: [
     "empresaId",
-    "piedraId",
     "proveedorId",
-    "cantidad",
-    "costoUnitario",
-    "costoTotal",
     "version",
   ],
   ordenproduccion: [
@@ -330,8 +329,10 @@ export function buildInput({ form, entity, isUpdate }) {
     "comisionMax",
   ].forEach((k) => delete clean[k]);
 
-  if (entity === "comprainsumo" && clean.cantidad && clean.costoUnitario)
-    clean.costoTotal = Number(clean.cantidad) * Number(clean.costoUnitario);
+  // ── CAMBIO — el cálculo de costoTotal a partir de cantidad ×
+  // costoUnitario ya no aplica aquí (esos campos son de un insumo/ítem,
+  // no de la cabeza "compra") — ahora vive en agregarItemCompra /
+  // actualizarItemCompra del lado del servidor.
 
   const base = {};
   for (const key of allowed) {

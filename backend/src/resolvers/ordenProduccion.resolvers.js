@@ -27,9 +27,17 @@ const incluirOrden = {
   detalles: {
     where:   { deletedAt: null },
     include: {
-      compraInsumo: { include: { piedra: { include: { tipo: true, unidad: true } } } },
+      // ── CAMBIO — CompraInsumo ya no trae numero/fecha propios (ahora
+      // viven en su cabeza Compra) — se agrega `compra: true` para que
+      // el frontend pueda mostrar compraInsumo.compra.numero/fecha.
+      compraInsumo: { include: { piedra: { include: { tipo: true, unidad: true } }, compra: true } },
       piedra:       { include: { tipo: true, unidad: true } },
-      movimientos:  { where: { deletedAt: null }, orderBy: { fecha: 'asc' } },
+      // 🩹 antes `movimientos` no incluía `compraInsumo` — el campo
+      // MovimientoInsumoOrden.compraInsumo que ya pedía el frontend
+      // (columna "Lote" en el historial e "Imprimir remisión") quedaba
+      // siempre null porque Prisma nunca lo traía. Se agrega el include
+      // aquí, con compra ya anidada para lo mismo de arriba.
+      movimientos:  { where: { deletedAt: null }, orderBy: { fecha: 'asc' }, include: { compraInsumo: { include: { compra: true } } } },
     },
     orderBy: { id: 'asc' },
   },
@@ -40,9 +48,9 @@ const incluirOrden = {
 };
 
 const incluirDetalle = {
-  compraInsumo: { include: { piedra: { include: { tipo: true, unidad: true } } } },
+  compraInsumo: { include: { piedra: { include: { tipo: true, unidad: true } }, compra: true } },
   piedra:       { include: { tipo: true, unidad: true } },
-  movimientos:  { where: { deletedAt: null }, orderBy: { fecha: 'asc' } },
+  movimientos:  { where: { deletedAt: null }, orderBy: { fecha: 'asc' }, include: { compraInsumo: { include: { compra: true } } } },
 };
 
 // ── NUEVO — ciclo de vida de estados de la orden manejado por el

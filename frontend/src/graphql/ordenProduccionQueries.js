@@ -1,9 +1,12 @@
 import { gql } from '@apollo/client';
 
+// ── CAMBIO — CompraInsumo ya no trae numero/fecha propios: ahora viven
+// en su cabeza Compra (ver conversación "deber ser" sobre separar
+// cabeza/detalle en Compras de Insumos). Se piden anidados bajo `compra`.
 const MOVIMIENTO_FIELDS = `
   id detalleOrdenProduccionId compraInsumoId tipoMovimiento
   cantidad valor fecha nota usu_creacion version numeroRemision
-  compraInsumo { id numero fecha costoUnitario }
+  compraInsumo { id costoUnitario compra { numero fecha } }
 `;
 
 const DETALLE_FIELDS = `
@@ -12,7 +15,7 @@ const DETALLE_FIELDS = `
   cantidadEnviada valorEnviado cantidadDevuelta valorDevuelto merma version
   consumoTeorico enviadoNeto diferenciaVsTeorico
   piedra       { id codigo nombre unidad { nombre } tipo { id codigo nombre } }
-  compraInsumo { id numero fecha costoUnitario cantidadDisponible
+  compraInsumo { id costoUnitario cantidadDisponible compra { numero fecha }
     piedra { id codigo nombre unidad { nombre } }
   }
   movimientos { ${MOVIMIENTO_FIELDS} }

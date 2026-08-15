@@ -100,19 +100,24 @@ export default {
       const movimientos = [];
 
       // 1. Entradas — compras del insumo
+      // ── CAMBIO — CompraInsumo ya no trae numero/fecha propios (ahora
+      // viven en su cabeza Compra, ver conversación sobre "deber ser" de
+      // separar cabeza/detalle en Compras de Insumos) — se filtra/ordena
+      // vía la relación `compra` y se lee `c.compra.numero`/`.fecha`.
       const compras = await prisma.compraInsumo.findMany({
         where: {
           piedraId: Number(piedraId),
-          empresaId: user.empresaActualId,
           deletedAt: null,
+          compra: { empresaId: user.empresaActualId, deletedAt: null },
         },
-        orderBy: { fecha: "asc" },
+        include: { compra: true },
+        orderBy: { compra: { fecha: "asc" } },
       });
       for (const c of compras) {
         movimientos.push({
-          fecha: c.fecha,
+          fecha: c.compra.fecha,
           tipo: "Compra",
-          referencia: c.numero,
+          referencia: c.compra.numero,
           cantidad: Number(c.cantidad),
           entradaStock: Number(c.cantidad),
           salidaStock: 0,
@@ -138,17 +143,14 @@ export default {
           },
         },
         include: {
-          detalle: {
-            include: { ordenProduccion: { include: { joyero: true } } },
-          },
+          detalle: { include: { ordenProduccion: { include: { joyero: true } } } },
         },
         orderBy: { fecha: "asc" },
       });
       for (const m of movs) {
         const orden = m.detalle?.ordenProduccion;
         const nombreJoyero = orden?.joyero?.nombre || null;
-        const referencia =
-          orden?.numero || `Orden #${m.detalle?.ordenProduccionId ?? "-"}`;
+        const referencia = orden?.numero || `Orden #${m.detalle?.ordenProduccionId ?? "-"}`;
         const cantidad = Number(m.cantidad);
         if (m.tipoMovimiento === "DEVOLUCION") {
           movimientos.push({
@@ -164,10 +166,7 @@ export default {
         } else {
           movimientos.push({
             fecha: m.fecha,
-            tipo:
-              m.tipoMovimiento === "INICIAL"
-                ? "Envío inicial a orden"
-                : "Envío adicional a orden",
+            tipo: m.tipoMovimiento === "INICIAL" ? "Envío inicial a orden" : "Envío adicional a orden",
             referencia,
             cantidad,
             entradaStock: 0,
