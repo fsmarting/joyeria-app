@@ -181,7 +181,10 @@ model Tercero {
   conversaciones Conversacion[] @relation("Conversacion_Cliente")
   ordenesComoJoyero OrdenProduccion[] @relation("OrdenProduccion_Joyero")
   repartos RepartoUtilidad[] @relation("RepartoUtilidad_Socio")
-  comprasComoProveedor CompraInsumo[] @relation("CompraInsumo_Proveedor")
+  // ── CAMBIO — antes apuntaba directo a CompraInsumo (numero/proveedor
+  // vivían ahí). Ahora esos campos son de la cabeza Compra — ver modelo
+  // Compra más abajo.
+  comprasComoProveedor Compra[] @relation("Compra_Proveedor")
   cotizaciones Cotizacion[] @relation("Cotizacion_Cliente")
   @@index([empresaId, tipoId])
 }
@@ -277,17 +280,21 @@ model ProductoPiedra {
   @@index([piedraId])
 }
 
-model CompraInsumo {
+// ── NUEVO ─────────────────────────────────────────────────────────
+// Cabeza de una compra de insumos. Antes esta información (numero, fecha,
+// proveedor, nota) vivía mezclada en la misma fila que el insumo comprado
+// (CompraInsumo) — como `numero` era único por fila, una compra real (una
+// sola factura/orden de compra de un proveedor) solo podía tener UN
+// insumo. Deber ser acordado con el usuario: separar cabeza (Compra) y
+// detalle (CompraInsumo, uno por cada insumo/lote de esa compra) — mismo
+// patrón que ya existe en Muestrario/MuestrarioItem y
+// OrdenProduccion/DetalleOrdenProduccion.
+model Compra {
   id Int @id @default(autoincrement())
   empresaId Int
   numero String @db.VarChar(20)
-  piedraId Int
   proveedorId Int?
   fecha DateTime @default(now())
-  cantidad Decimal @db.Decimal(14,4)
-  costoUnitario Decimal @db.Decimal(14,2)
-  costoTotal Decimal @db.Decimal(14,2)
-  cantidadDisponible Decimal @db.Decimal(14,4)
   nota String? @db.VarChar(500)
   fec_creacion DateTime @default(now())
   usu_creacion String?
@@ -295,12 +302,38 @@ model CompraInsumo {
   usu_actualizacion String?
   version Int @default(1)
   deletedAt DateTime?
+  proveedor Tercero? @relation("Compra_Proveedor", fields: [proveedorId], references: [id])
+  items CompraInsumo[] @relation("CompraInsumo_Compra")
+  @@unique([empresaId, numero])
+  @@index([empresaId])
+}
+
+// ── CAMBIO — ahora es el DETALLE de una Compra (antes traía numero/
+// fecha/proveedor/nota propios — esos campos subieron a la cabeza
+// Compra). Sigue siendo el "lote" individual de un insumo: cantidad,
+// costo y cantidadDisponible no cambiaron de significado, y
+// DetalleOrdenProduccion/MovimientoInsumoOrden lo siguen usando igual
+// que antes (compraInsumoId sigue apuntando aquí, no a la cabeza).
+model CompraInsumo {
+  id Int @id @default(autoincrement())
+  compraId Int
+  piedraId Int
+  cantidad Decimal @db.Decimal(14,4)
+  costoUnitario Decimal @db.Decimal(14,2)
+  costoTotal Decimal @db.Decimal(14,2)
+  cantidadDisponible Decimal @db.Decimal(14,4)
+  fec_creacion DateTime @default(now())
+  usu_creacion String?
+  fec_actualizacion DateTime @updatedAt
+  usu_actualizacion String?
+  version Int @default(1)
+  deletedAt DateTime?
+  compra Compra @relation("CompraInsumo_Compra", fields: [compraId], references: [id], onDelete: Cascade)
   piedra Piedra @relation("CompraInsumo_Piedra", fields: [piedraId], references: [id])
-  proveedor Tercero? @relation("CompraInsumo_Proveedor", fields: [proveedorId], references: [id])
   detallesOrden DetalleOrdenProduccion[] @relation("DetalleOrden_Compra")
   movimientos MovimientoInsumoOrden[] @relation("MovimientoInsumoOrden_Compra")
-  @@unique([empresaId, numero])
-  @@index([empresaId, piedraId])
+  @@index([compraId])
+  @@index([piedraId])
 }
 
 model OrdenProduccion {
