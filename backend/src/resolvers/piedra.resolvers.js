@@ -134,23 +134,28 @@ export default {
       // detalle.ordenProduccion.joyero (relaciones confirmadas en
       // schema.prisma: MovimientoInsumoOrden.detalle →
       // DetalleOrdenProduccion.ordenProduccion → OrdenProduccion.joyero).
+      // ── CAMBIO — mismo ajuste de la ronda 27: CompraInsumo ya no tiene
+      // empresaId propio, se filtra vía su relación `compra`.
       const movs = await prisma.movimientoInsumoOrden.findMany({
         where: {
           deletedAt: null,
           compraInsumo: {
             piedraId: Number(piedraId),
-            empresaId: user.empresaActualId,
+            compra: { empresaId: user.empresaActualId, deletedAt: null },
           },
         },
         include: {
-          detalle: { include: { ordenProduccion: { include: { joyero: true } } } },
+          detalle: {
+            include: { ordenProduccion: { include: { joyero: true } } },
+          },
         },
         orderBy: { fecha: "asc" },
       });
       for (const m of movs) {
         const orden = m.detalle?.ordenProduccion;
         const nombreJoyero = orden?.joyero?.nombre || null;
-        const referencia = orden?.numero || `Orden #${m.detalle?.ordenProduccionId ?? "-"}`;
+        const referencia =
+          orden?.numero || `Orden #${m.detalle?.ordenProduccionId ?? "-"}`;
         const cantidad = Number(m.cantidad);
         if (m.tipoMovimiento === "DEVOLUCION") {
           movimientos.push({
@@ -166,7 +171,10 @@ export default {
         } else {
           movimientos.push({
             fecha: m.fecha,
-            tipo: m.tipoMovimiento === "INICIAL" ? "Envío inicial a orden" : "Envío adicional a orden",
+            tipo:
+              m.tipoMovimiento === "INICIAL"
+                ? "Envío inicial a orden"
+                : "Envío adicional a orden",
             referencia,
             cantidad,
             entradaStock: 0,
