@@ -32,6 +32,7 @@ export const GET_PIEDRAS_CURSOR = gql`
             nombre
           }
           stockDisponible
+          valorStockDisponible
         }
         cursor
       }
@@ -82,6 +83,9 @@ export const GET_MOVIMIENTOS_INVENTARIO_PIEDRA = gql`
       salidaStock
       variacionCustodia
       joyero
+      entradaValor
+      salidaValor
+      variacionCustodiaValor
     }
   }
 `;

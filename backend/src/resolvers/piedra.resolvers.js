@@ -13,6 +13,21 @@ export default {
       });
       return Number(agg._sum.cantidadDisponible ?? 0);
     },
+    // ── NUEVO — valorización del inventario (ronda 33) — no se puede
+    // hacer con un _sum de Prisma porque es cantidadDisponible × su
+    // propio costoUnitario (dos campos de la misma fila), así que se
+    // trae cada lote y se reduce en JS. La cantidad de lotes vigentes de
+    // un insumo es chica, no debería pesar.
+    valorStockDisponible: async (p, _, { prisma }) => {
+      const lotes = await prisma.compraInsumo.findMany({
+        where: { piedraId: p.id, deletedAt: null },
+        select: { cantidadDisponible: true, costoUnitario: true },
+      });
+      return lotes.reduce(
+        (s, l) => s + Number(l.cantidadDisponible) * Number(l.costoUnitario),
+        0,
+      );
+    },
   },
 
   Query: {
@@ -114,6 +129,9 @@ export default {
         orderBy: { compra: { fecha: "asc" } },
       });
       for (const c of compras) {
+        // ── NUEVO — valorización (ronda 33): costoTotal ya está guardado
+        // en el lote (cantidad × costoUnitario real de esa compra).
+        const valor = Number(c.costoTotal);
         movimientos.push({
           fecha: c.compra.fecha,
           tipo: "Compra",
@@ -123,6 +141,9 @@ export default {
           salidaStock: 0,
           variacionCustodia: 0,
           joyero: null,
+          entradaValor: valor,
+          salidaValor: 0,
+          variacionCustodiaValor: 0,
         });
       }
 
@@ -136,6 +157,9 @@ export default {
       // DetalleOrdenProduccion.ordenProduccion → OrdenProduccion.joyero).
       // ── CAMBIO — mismo ajuste de la ronda 27: CompraInsumo ya no tiene
       // empresaId propio, se filtra vía su relación `compra`.
+      // ── CAMBIO (ronda 33) — se agrega compraInsumo.costoUnitario al
+      // include para poder valorizar cada envío/devolución con el costo
+      // REAL del lote específico que se movió (no un costo estándar).
       const movs = await prisma.movimientoInsumoOrden.findMany({
         where: {
           deletedAt: null,
@@ -148,6 +172,7 @@ export default {
           detalle: {
             include: { ordenProduccion: { include: { joyero: true } } },
           },
+          compraInsumo: { select: { costoUnitario: true } },
         },
         orderBy: { fecha: "asc" },
       });
@@ -157,6 +182,8 @@ export default {
         const referencia =
           orden?.numero || `Orden #${m.detalle?.ordenProduccionId ?? "-"}`;
         const cantidad = Number(m.cantidad);
+        const costoUnitarioLote = Number(m.compraInsumo?.costoUnitario ?? 0);
+        const valorMov = cantidad * costoUnitarioLote;
         if (m.tipoMovimiento === "DEVOLUCION") {
           movimientos.push({
             fecha: m.fecha,
@@ -167,6 +194,9 @@ export default {
             salidaStock: 0,
             variacionCustodia: -cantidad,
             joyero: nombreJoyero,
+            entradaValor: valorMov,
+            salidaValor: 0,
+            variacionCustodiaValor: -valorMov,
           });
         } else {
           movimientos.push({
@@ -181,6 +211,9 @@ export default {
             salidaStock: cantidad,
             variacionCustodia: cantidad,
             joyero: nombreJoyero,
+            entradaValor: 0,
+            salidaValor: valorMov,
+            variacionCustodiaValor: valorMov,
           });
         }
       }

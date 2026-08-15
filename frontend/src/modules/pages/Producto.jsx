@@ -247,6 +247,20 @@ function MovimientosInventarioPanel({ producto, refetch }) {
   const movimientos = data?.movimientosInventarioProducto || [];
   const [crearAjuste] = useMutation(CREAR_AJUSTE_INVENTARIO);
 
+  // ── NUEVO — valorización SOLO del mes actual (ronda 33). A diferencia
+  // de Insumos, Producto no maneja lotes con costo propio por fecha —
+  // tiene un único costo vigente (producto.costoTotal, el mismo costeo
+  // dinámico que ya se ve arriba en el panel de Costeo). Valorizar meses
+  // PASADOS con el costo de HOY daría una cifra histórica falsa si el
+  // costo cambió desde entonces (ej. subió el oro) — por eso solo se
+  // muestra el valor del mes en curso, no de meses anteriores. Esto no
+  // es un sistema contable con costeo histórico; es una foto de "cuánto
+  // vale el inventario de este producto ahora mismo".
+  const costoActual = Number(producto.costoTotal ?? 0);
+  const hoy = new Date();
+  const esMesActual = (k) =>
+    k.anio === hoy.getFullYear() && k.mes === hoy.getMonth() + 1;
+
   const kardex = useMemo(
     () => calcularKardex(movimientos, Number(producto.enStock ?? 0)),
     [movimientos, producto.enStock],
@@ -375,10 +389,16 @@ function MovimientosInventarioPanel({ producto, refetch }) {
                 <th>Entradas</th>
                 <th>Salidas</th>
                 <th>Saldo Actual</th>
+                <th>Valor Saldo Actual</th>
                 <th>En Muestrarios</th>
+                <th>Valor En Muestrarios</th>
               </tr>
             </thead>
             <tbody>
+              {/* ── NUEVO (ronda 33) — el valor solo se muestra en la fila
+                  del mes actual; meses pasados quedan en "-" a propósito
+                  (ver nota arriba: no hay costo histórico guardado por
+                  mes, solo el costo vigente de hoy). */}
               {kardex.map((k) => (
                 <tr key={k.key}>
                   <td>
@@ -388,7 +408,13 @@ function MovimientosInventarioPanel({ producto, refetch }) {
                   <td className="text-success">+{k.entradas}</td>
                   <td className="text-danger">-{k.salidas}</td>
                   <td className="fw-bold">{k.saldoActual}</td>
+                  <td className="fw-bold">
+                    {esMesActual(k) ? fmt(k.saldoActual * costoActual) : "-"}
+                  </td>
                   <td>{k.enMuestrarios}</td>
+                  <td>
+                    {esMesActual(k) ? fmt(k.enMuestrarios * costoActual) : "-"}
+                  </td>
                 </tr>
               ))}
             </tbody>

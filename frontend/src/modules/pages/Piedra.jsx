@@ -14,6 +14,10 @@ const fmtQ = (n, u = "", maxDigits = 4) =>
   n != null
     ? `${Number(n).toLocaleString("es-CO", { maximumFractionDigits: maxDigits })} ${u}`.trim()
     : "-";
+const fmt = (n) =>
+  n != null
+    ? `$${Number(n).toLocaleString("es-CO", { minimumFractionDigits: 0 })}`
+    : "-";
 
 // ── NUEVO — visibilidad de inventario de insumos (Kardex) ────────────
 // Mismo modelo que calcularKardex en Producto.jsx: el "saldo inicial" no
@@ -45,10 +49,26 @@ const MESES_NOMBRE = [
 // tocar el resolver) — el total de "Entradas" para el cálculo del saldo
 // sigue siendo compras + devoluciones, solo que ahora también se ve
 // desglosado en la tabla.
-function calcularKardexInsumo(movimientos, saldoActualHoy) {
+// ── NUEVO — valorización (ronda 33) — mismo cálculo que las unidades,
+// en paralelo y con su propio "saldo inicial en $" deducido hacia atrás
+// desde piedra.valorStockDisponible (la suma de cantidadDisponible ×
+// costo REAL de cada lote vigente, no un costo estándar). Cada
+// movimiento ya trae su propio entradaValor/salidaValor/
+// variacionCustodiaValor calculados en el backend con el costo real del
+// lote que se movió, así que aquí solo se suman — sin inventar ningún
+// costo nuevo del lado del frontend.
+function calcularKardexInsumo(movimientos, saldoActualHoy, valorActualHoy) {
   const totalEntradas = movimientos.reduce((s, m) => s + m.entradaStock, 0);
   const totalSalidas = movimientos.reduce((s, m) => s + m.salidaStock, 0);
   const saldoInicial = saldoActualHoy - totalEntradas + totalSalidas;
+
+  const totalEntradasValor = movimientos.reduce(
+    (s, m) => s + m.entradaValor,
+    0,
+  );
+  const totalSalidasValor = movimientos.reduce((s, m) => s + m.salidaValor, 0);
+  const saldoInicialValor =
+    valorActualHoy - totalEntradasValor + totalSalidasValor;
 
   const porMes = new Map();
   for (const m of movimientos) {
@@ -59,29 +79,60 @@ function calcularKardexInsumo(movimientos, saldoActualHoy) {
         compras: 0,
         devoluciones: 0,
         salidas: 0,
+        comprasValor: 0,
+        devolucionesValor: 0,
+        salidasValor: 0,
         anio: d.getFullYear(),
         mes: d.getMonth() + 1,
       });
     }
     const acc = porMes.get(key);
-    if (m.tipo === "Compra") acc.compras += m.entradaStock;
-    else if (m.tipo === "Devolución de orden")
+    if (m.tipo === "Compra") {
+      acc.compras += m.entradaStock;
+      acc.comprasValor += m.entradaValor;
+    } else if (m.tipo === "Devolución de orden") {
       acc.devoluciones += m.entradaStock;
+      acc.devolucionesValor += m.entradaValor;
+    }
     acc.salidas += m.salidaStock;
+    acc.salidasValor += m.salidaValor;
   }
 
   const meses = Array.from(porMes.entries()).sort(([a], [b]) =>
     a.localeCompare(b),
   );
   let saldoAnterior = saldoInicial;
+  let saldoAnteriorValor = saldoInicialValor;
   const filas = [];
-  for (const [key, { compras, devoluciones, salidas, anio, mes }] of meses) {
+  for (const [
+    key,
+    {
+      compras,
+      devoluciones,
+      salidas,
+      comprasValor,
+      devolucionesValor,
+      salidasValor,
+      anio,
+      mes,
+    },
+  ] of meses) {
     const entradas = compras + devoluciones;
     const saldoActual = saldoAnterior + entradas - salidas;
+    const entradasValor = comprasValor + devolucionesValor;
+    const saldoActualValor = saldoAnteriorValor + entradasValor - salidasValor;
     const finDeMes = new Date(anio, mes, 0, 23, 59, 59);
-    const enPoderJoyeros = movimientos
-      .filter((m) => new Date(m.fecha) <= finDeMes)
-      .reduce((s, m) => s + m.variacionCustodia, 0);
+    const movimientosDelPeriodo = movimientos.filter(
+      (m) => new Date(m.fecha) <= finDeMes,
+    );
+    const enPoderJoyeros = movimientosDelPeriodo.reduce(
+      (s, m) => s + m.variacionCustodia,
+      0,
+    );
+    const enPoderJoyerosValor = movimientosDelPeriodo.reduce(
+      (s, m) => s + m.variacionCustodiaValor,
+      0,
+    );
     filas.push({
       key,
       anio,
@@ -92,8 +143,11 @@ function calcularKardexInsumo(movimientos, saldoActualHoy) {
       salidas,
       saldoActual,
       enPoderJoyeros,
+      saldoActualValor,
+      enPoderJoyerosValor,
     });
     saldoAnterior = saldoActual;
+    saldoAnteriorValor = saldoActualValor;
   }
   return filas;
 }
@@ -110,8 +164,12 @@ function MovimientosInventarioInsumoPanel({ piedra }) {
 
   const kardex = useMemo(
     () =>
-      calcularKardexInsumo(movimientos, Number(piedra.stockDisponible ?? 0)),
-    [movimientos, piedra.stockDisponible],
+      calcularKardexInsumo(
+        movimientos,
+        Number(piedra.stockDisponible ?? 0),
+        Number(piedra.valorStockDisponible ?? 0),
+      ),
+    [movimientos, piedra.stockDisponible, piedra.valorStockDisponible],
   );
 
   // ── NUEVO — dónde está hoy lo que "En poder de joyeros" del Kardex.
@@ -163,7 +221,9 @@ function MovimientosInventarioInsumoPanel({ piedra }) {
                 <th>Devoluciones</th>
                 <th>Salidas</th>
                 <th>Saldo Actual</th>
+                <th>Valor Saldo Actual</th>
                 <th>En poder de joyeros</th>
+                <th>Valor en poder de joyeros</th>
               </tr>
             </thead>
             <tbody>
@@ -179,7 +239,9 @@ function MovimientosInventarioInsumoPanel({ piedra }) {
                   </td>
                   <td className="text-danger">-{fmtQ(k.salidas, unidad)}</td>
                   <td className="fw-bold">{fmtQ(k.saldoActual, unidad)}</td>
+                  <td className="fw-bold">{fmt(k.saldoActualValor)}</td>
                   <td>{fmtQ(k.enPoderJoyeros, unidad)}</td>
+                  <td>{fmt(k.enPoderJoyerosValor)}</td>
                 </tr>
               ))}
             </tbody>

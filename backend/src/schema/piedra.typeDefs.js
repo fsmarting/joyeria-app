@@ -18,6 +18,12 @@ export default /* GraphQL */ `
     # Se calcula, no se guarda (mismo motivo que costoPiedras/costoTotal
     # en Producto: siempre refleja el dato vivo, no un snapshot viejo).
     stockDisponible: Float!
+    # ── NUEVO — valorización del inventario (ronda 33) ────────────────
+    # Suma de (cantidadDisponible × costoUnitario real) de cada lote
+    # vigente — mismo criterio que ya usa el costeo dinámico del oro en
+    # Producto: el costo REAL de cada compra, no costoEstandardPorUnidad
+    # (ese campo es solo una referencia manual que puede desactualizarse).
+    valorStockDisponible: Float!
   }
   type PiedraEdge {
     node: Piedra!
@@ -50,6 +56,14 @@ export default /* GraphQL */ `
     # Solo viene lleno en envíos/devoluciones hacia una orden de
     # producción; null en compras — ahí no aplica.
     joyero: String
+    # ── NUEVO — valorización por movimiento (ronda 33) — mismo criterio
+    # que entradaStock/salidaStock/variacionCustodia pero en pesos, usando
+    # el costo REAL del lote de cada movimiento (costoTotal de la compra
+    # para compras; costoUnitario del lote específico para envíos y
+    # devoluciones hacia una orden).
+    entradaValor: Float!
+    salidaValor: Float!
+    variacionCustodiaValor: Float!
   }
 
   input PiedraInput {
