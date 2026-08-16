@@ -28,6 +28,7 @@ model Empresa {
   muestrarios Muestrario[] @relation("Muestrario_Empresa")
   otizaciones Cotizacion[] @relation("Cotizacion_Empresa")
   ajustesInventario AjusteInventario[] @relation("AjusteInventario_Empresa")
+  ajustesInsumo AjusteInsumo[] @relation("AjusteInsumo_Empresa")
 }
 
 
@@ -224,6 +225,7 @@ model Piedra {
   itemsEnProducto ProductoPiedra[] @relation("ProductoPiedra_Piedra")
   compras CompraInsumo[] @relation("CompraInsumo_Piedra")
   detallesOrden DetalleOrdenProduccion[] @relation("DetalleOrden_Piedra")
+  ajustes AjusteInsumo[] @relation("AjusteInsumo_Piedra")
   @@unique([empresaId, codigo])
   @@index([empresaId])
 }
@@ -334,6 +336,7 @@ model CompraInsumo {
   piedra Piedra @relation("CompraInsumo_Piedra", fields: [piedraId], references: [id])
   detallesOrden DetalleOrdenProduccion[] @relation("DetalleOrden_Compra")
   movimientos MovimientoInsumoOrden[] @relation("MovimientoInsumoOrden_Compra")
+  ajustes AjusteInsumo[] @relation("AjusteInsumo_Compra")
   @@index([compraId])
   @@index([piedraId])
 }
@@ -385,6 +388,16 @@ model DetalleOrdenProduccion {
   valorEnviado Decimal @default(0) @db.Decimal(14,2)
   cantidadDevuelta Decimal @default(0) @db.Decimal(14,4)
   valorDevuelto Decimal @default(0) @db.Decimal(14,2)
+  // ── NUEVO (ronda 36) — cuánto de lo enviado ya se dio por consumido
+  // (convertido en producto terminado real) — se actualiza en cada
+  // entrega de producto, proporcional a las piezas de ESA entrega
+  // (registrarEntregaOrden). "Sin devolver" pasa a ser
+  // cantidadEnviada − cantidadDevuelta − cantidadConsumida, para que ya
+  // no se quede "de por vida" en poder del joyero una vez sus piezas se
+  // van entregando. Ver conversación "deber ser" del Mecanismo 1
+  // (entrada + salida) en MovimientoInsumoOrden.
+  cantidadConsumida Decimal @default(0) @db.Decimal(14,4)
+  valorConsumido Decimal @default(0) @db.Decimal(14,2)
   fec_creacion DateTime @default(now())
   usu_creacion String?
   fec_actualizacion DateTime @updatedAt
@@ -664,6 +677,36 @@ model AjusteInventario {
   empresa Empresa @relation("AjusteInventario_Empresa", fields: [empresaId], references: [id])
   producto Producto @relation("AjusteInventario_Producto", fields: [productoId], references: [id])
   @@index([empresaId, productoId])
+}
+
+// ── NUEVO (ronda 36) — Ajustes de Inventario, ahora para Insumos ────
+// Mismo patrón que AjusteInventario (arriba), pero para insumos que se
+// pierden estando todavía en la bodega de Río Rayo (nunca llegaron a
+// manos de ningún joyero) — deber ser acordado con el usuario: eso es
+// distinto del material que sí llegó a un joyero (ese se resuelve con
+// el Mecanismo 1 de entrada+salida en MovimientoInsumoOrden, no aquí).
+// Requiere compraInsumoId porque cada gramo/unidad disponible de un
+// insumo vive en un lote específico con su propio costo real — hay que
+// saber de cuál lote sale la pérdida. Solo soporta "PERDIDA" por ahora
+// (el usuario no pidió "HALLAZGO" para insumos); tipoMovimiento queda
+// como texto libre para poder agregarlo después sin migrar de nuevo.
+model AjusteInsumo {
+  id Int @id @default(autoincrement())
+  empresaId Int
+  piedraId Int
+  compraInsumoId Int
+  numero String @db.VarChar(20)
+  tipoMovimiento String @db.VarChar(20) // PERDIDA (único valor soportado hoy)
+  cantidad Decimal @db.Decimal(14,4)
+  motivo String @db.VarChar(500)
+  fecha DateTime @default(now())
+  usu_creacion String? @db.VarChar(30)
+  version Int @default(1)
+  deletedAt DateTime?
+  empresa Empresa @relation("AjusteInsumo_Empresa", fields: [empresaId], references: [id])
+  piedra Piedra @relation("AjusteInsumo_Piedra", fields: [piedraId], references: [id])
+  compraInsumo CompraInsumo @relation("AjusteInsumo_Compra", fields: [compraInsumoId], references: [id])
+  @@index([empresaId, piedraId])
 }
 
 model Cotizacion {

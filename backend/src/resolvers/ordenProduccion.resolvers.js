@@ -1,5 +1,5 @@
-import { requireAuth }    from '../utils/authHelpers.js';
-import { validarEmpresa } from '../utils/validations.js';
+import { requireAuth } from "../utils/authHelpers.js";
+import { validarEmpresa } from "../utils/validations.js";
 
 // ⚠️ producto.include DEBE traer también "piedras" (el BOM) — la query
 // del frontend (ORDEN_FIELDS → PRODUCTO_BOM_FIELDS) pide orden.producto.piedras
@@ -18,39 +18,57 @@ const incluirOrden = {
           piedra: { include: { tipo: true, unidad: true } },
           tipoPiedra: true,
         },
-        orderBy: [{ tipoId: 'asc' }, { id: 'asc' }],
+        orderBy: [{ tipoId: "asc" }, { id: "asc" }],
       },
     },
   },
-  joyero:   true,
-  estado:   true,
+  joyero: true,
+  estado: true,
   detalles: {
-    where:   { deletedAt: null },
+    where: { deletedAt: null },
     include: {
       // ── CAMBIO — CompraInsumo ya no trae numero/fecha propios (ahora
       // viven en su cabeza Compra) — se agrega `compra: true` para que
       // el frontend pueda mostrar compraInsumo.compra.numero/fecha.
-      compraInsumo: { include: { piedra: { include: { tipo: true, unidad: true } }, compra: true } },
-      piedra:       { include: { tipo: true, unidad: true } },
+      compraInsumo: {
+        include: {
+          piedra: { include: { tipo: true, unidad: true } },
+          compra: true,
+        },
+      },
+      piedra: { include: { tipo: true, unidad: true } },
       // 🩹 antes `movimientos` no incluía `compraInsumo` — el campo
       // MovimientoInsumoOrden.compraInsumo que ya pedía el frontend
       // (columna "Lote" en el historial e "Imprimir remisión") quedaba
       // siempre null porque Prisma nunca lo traía. Se agrega el include
       // aquí, con compra ya anidada para lo mismo de arriba.
-      movimientos:  { where: { deletedAt: null }, orderBy: { fecha: 'asc' }, include: { compraInsumo: { include: { compra: true } } } },
+      movimientos: {
+        where: { deletedAt: null },
+        orderBy: { fecha: "asc" },
+        include: { compraInsumo: { include: { compra: true } } },
+      },
     },
-    orderBy: { id: 'asc' },
+    orderBy: { id: "asc" },
   },
   entregas: {
-    where:   { deletedAt: null },
-    orderBy: { fecha: 'asc' },
+    where: { deletedAt: null },
+    orderBy: { fecha: "asc" },
   },
 };
 
 const incluirDetalle = {
-  compraInsumo: { include: { piedra: { include: { tipo: true, unidad: true } }, compra: true } },
-  piedra:       { include: { tipo: true, unidad: true } },
-  movimientos:  { where: { deletedAt: null }, orderBy: { fecha: 'asc' }, include: { compraInsumo: { include: { compra: true } } } },
+  compraInsumo: {
+    include: {
+      piedra: { include: { tipo: true, unidad: true } },
+      compra: true,
+    },
+  },
+  piedra: { include: { tipo: true, unidad: true } },
+  movimientos: {
+    where: { deletedAt: null },
+    orderBy: { fecha: "asc" },
+    include: { compraInsumo: { include: { compra: true } } },
+  },
 };
 
 // ── NUEVO — ciclo de vida de estados de la orden manejado por el
@@ -66,7 +84,7 @@ const incluirDetalle = {
 // códigos PEND / PROC / ENTR / CANC (el campo `codigo` es el
 // identificador estable — no depender del `nombre`, que se puede
 // editar desde Admin sin que esto se entere).
-const ESTADO_ORDEN = { catalogoCodigo: 'PRODU', subcatalogoCodigo: 'EORD' };
+const ESTADO_ORDEN = { catalogoCodigo: "PRODU", subcatalogoCodigo: "EORD" };
 
 const obtenerEstadoOrdenId = async (prisma, empresaId, codigo) => {
   const grupo = await prisma.grupo.findFirst({
@@ -76,24 +94,32 @@ const obtenerEstadoOrdenId = async (prisma, empresaId, codigo) => {
       subcatalogo: {
         codigo: ESTADO_ORDEN.subcatalogoCodigo,
         deletedAt: null,
-        catalogo: { codigo: ESTADO_ORDEN.catalogoCodigo, empresaId, deletedAt: null },
+        catalogo: {
+          codigo: ESTADO_ORDEN.catalogoCodigo,
+          empresaId,
+          deletedAt: null,
+        },
       },
     },
   });
   if (!grupo) {
     throw new Error(
-      `No existe el estado de orden '${codigo}' en el catálogo ${ESTADO_ORDEN.catalogoCodigo}/${ESTADO_ORDEN.subcatalogoCodigo}. Verifique Admin → Grupos.`
+      `No existe el estado de orden '${codigo}' en el catálogo ${ESTADO_ORDEN.catalogoCodigo}/${ESTADO_ORDEN.subcatalogoCodigo}. Verifique Admin → Grupos.`,
     );
   }
   return grupo.id;
 };
 
 // Genera el número de remisión automático: REM-{numeroOrden}-{consecutivo}
-const generarNumeroRemision = async (prisma, ordenProduccionId, numeroOrden) => {
+const generarNumeroRemision = async (
+  prisma,
+  ordenProduccionId,
+  numeroOrden,
+) => {
   const count = await prisma.entregaOrden.count({
     where: { ordenProduccionId, deletedAt: null },
   });
-  const consecutivo = String(count + 1).padStart(2, '0');
+  const consecutivo = String(count + 1).padStart(2, "0");
   return `REM-${numeroOrden}-${consecutivo}`;
 };
 
@@ -107,15 +133,19 @@ const generarNumeroRemision = async (prisma, ordenProduccionId, numeroOrden) => 
 // al crear el detalle, ADICIONAL si se le envía más después) — las
 // DEVOLUCION son la dirección contraria (el joyero regresa material) y
 // por ahora no generan su propia remisión.
-const generarNumeroRemisionEnvio = async (prisma, ordenProduccionId, numeroOrden) => {
+const generarNumeroRemisionEnvio = async (
+  prisma,
+  ordenProduccionId,
+  numeroOrden,
+) => {
   const count = await prisma.movimientoInsumoOrden.count({
     where: {
       detalle: { ordenProduccionId },
-      tipoMovimiento: { in: ['INICIAL', 'ADICIONAL'] },
+      tipoMovimiento: { in: ["INICIAL", "ADICIONAL"] },
       deletedAt: null,
     },
   });
-  const consecutivo = String(count + 1).padStart(2, '0');
+  const consecutivo = String(count + 1).padStart(2, "0");
   return `REM-ENV-${numeroOrden}-${consecutivo}`;
 };
 
@@ -133,7 +163,7 @@ const generarNumeroOrden = async (prisma, empresaId) => {
   const count = await prisma.ordenProduccion.count({
     where: { empresaId, numero: { startsWith: prefijo } },
   });
-  const consecutivo = String(count + 1).padStart(3, '0');
+  const consecutivo = String(count + 1).padStart(3, "0");
   return `${prefijo}${consecutivo}`;
 };
 
@@ -169,7 +199,9 @@ const calcConciliacionAsync = async (d, prisma) => {
     },
   });
 
-  const bomLine = orden?.producto?.piedras.find((pp) => pp.piedraId === d.piedraId);
+  const bomLine = orden?.producto?.piedras.find(
+    (pp) => pp.piedraId === d.piedraId,
+  );
   const cantidadEntregada = Number(orden?.cantidadEntregada ?? 0);
 
   let consumoTeorico = null;
@@ -178,8 +210,10 @@ const calcConciliacionAsync = async (d, prisma) => {
     consumoTeorico = base + base * (Number(bomLine.desperdicio ?? 0) / 100);
   }
 
-  const enviadoNeto = Number(d.cantidadEnviada ?? 0) - Number(d.cantidadDevuelta ?? 0);
-  const diferenciaVsTeorico = consumoTeorico != null ? enviadoNeto - consumoTeorico : null;
+  const enviadoNeto =
+    Number(d.cantidadEnviada ?? 0) - Number(d.cantidadDevuelta ?? 0);
+  const diferenciaVsTeorico =
+    consumoTeorico != null ? enviadoNeto - consumoTeorico : null;
 
   d.__conciliacion = { consumoTeorico, enviadoNeto, diferenciaVsTeorico };
   return d.__conciliacion;
@@ -187,42 +221,80 @@ const calcConciliacionAsync = async (d, prisma) => {
 
 export default {
   DetalleOrdenProduccion: {
+    // ── CAMBIO (ronda 36) — antes: cantidadEnviada − cantidadDevuelta.
+    // Ahora también resta cantidadConsumida (lo que ya se dio por
+    // convertido en producto terminado real, actualizado en cada
+    // entrega) — así "Sin devolver" deja de mostrar de por vida algo
+    // que el joyero, en la práctica, ya no tiene porque se volvió pieza.
     merma: (d) => {
-      const e = Number(d.cantidadEnviada), r = Number(d.cantidadDevuelta);
-      return e > 0 ? Math.round((e - r) * 10000) / 10000 : 0;
+      const e = Number(d.cantidadEnviada),
+        r = Number(d.cantidadDevuelta),
+        c = Number(d.cantidadConsumida ?? 0);
+      const val = e - r - c;
+      return val > 0 ? Math.round(val * 10000) / 10000 : 0;
     },
-    consumoTeorico: async (d, _, { prisma }) => (await calcConciliacionAsync(d, prisma)).consumoTeorico,
-    enviadoNeto: async (d, _, { prisma }) => (await calcConciliacionAsync(d, prisma)).enviadoNeto,
-    diferenciaVsTeorico: async (d, _, { prisma }) => (await calcConciliacionAsync(d, prisma)).diferenciaVsTeorico,
+    consumoTeorico: async (d, _, { prisma }) =>
+      (await calcConciliacionAsync(d, prisma)).consumoTeorico,
+    enviadoNeto: async (d, _, { prisma }) =>
+      (await calcConciliacionAsync(d, prisma)).enviadoNeto,
+    diferenciaVsTeorico: async (d, _, { prisma }) =>
+      (await calcConciliacionAsync(d, prisma)).diferenciaVsTeorico,
   },
   MovimientoInsumoOrden: {
     fecha: (m) => (m.fecha ? new Date(m.fecha).toISOString() : null),
   },
   OrdenProduccion: {
-    fechaEnvio:    (o) => o.fechaEnvio    ? new Date(o.fechaEnvio).toISOString()    : null,
-    fechaEstimada: (o) => o.fechaEstimada ? new Date(o.fechaEstimada).toISOString() : null,
-    fechaEntrega:  (o) => o.fechaEntrega  ? new Date(o.fechaEntrega).toISOString()  : null,
+    fechaEnvio: (o) =>
+      o.fechaEnvio ? new Date(o.fechaEnvio).toISOString() : null,
+    fechaEstimada: (o) =>
+      o.fechaEstimada ? new Date(o.fechaEstimada).toISOString() : null,
+    fechaEntrega: (o) =>
+      o.fechaEntrega ? new Date(o.fechaEntrega).toISOString() : null,
   },
   EntregaOrden: {
-    fecha: (e) => e.fecha ? new Date(e.fecha).toISOString() : null,
+    fecha: (e) => (e.fecha ? new Date(e.fecha).toISOString() : null),
   },
 
   Query: {
-    ordenesFiltradosCursor: async (_, { first=10, after=null, orden=[], direccion=[], busqueda='' }, { prisma, user }) => {
+    ordenesFiltradosCursor: async (
+      _,
+      { first = 10, after = null, orden = [], direccion = [], busqueda = "" },
+      { prisma, user },
+    ) => {
       requireAuth(user);
       const where = { empresaId: user.empresaActualId, deletedAt: null };
       if (busqueda?.trim()) {
         const t = busqueda.trim();
         where.OR = [
-          { numero: { contains: t, mode: 'insensitive' } },
-          { producto: { nombre: { contains: t, mode: 'insensitive' } } },
-          { joyero:   { nombre: { contains: t, mode: 'insensitive' } } },
+          { numero: { contains: t, mode: "insensitive" } },
+          { producto: { nombre: { contains: t, mode: "insensitive" } } },
+          { joyero: { nombre: { contains: t, mode: "insensitive" } } },
         ];
       }
-      const orderByClause = orden.length > 0 ? orden.map((c,i) => ({ [c]: direccion[i]||'asc' })) : [{ fechaEnvio: 'desc' }];
-      const items = await prisma.ordenProduccion.findMany({ where, take: first, skip: after?1:0, cursor: after?{id:Number(after)}:undefined, orderBy: orderByClause, include: incluirOrden });
+      const orderByClause =
+        orden.length > 0
+          ? orden.map((c, i) => ({ [c]: direccion[i] || "asc" }))
+          : [{ fechaEnvio: "desc" }];
+      const items = await prisma.ordenProduccion.findMany({
+        where,
+        take: first,
+        skip: after ? 1 : 0,
+        cursor: after ? { id: Number(after) } : undefined,
+        orderBy: orderByClause,
+        include: incluirOrden,
+      });
       const last = items[items.length - 1];
-      return { edges: items.map((item) => ({ node: item, cursor: String(item.id) })), pageInfo: { endCursor: last?String(last.id):null, hasNextPage: last?(await prisma.ordenProduccion.count({ where: { ...where, id: { gt: last.id } } }))>0:false } };
+      return {
+        edges: items.map((item) => ({ node: item, cursor: String(item.id) })),
+        pageInfo: {
+          endCursor: last ? String(last.id) : null,
+          hasNextPage: last
+            ? (await prisma.ordenProduccion.count({
+                where: { ...where, id: { gt: last.id } },
+              })) > 0
+            : false,
+        },
+      };
     },
 
     // ── NUEVO — histórico de costo por producto (solo lectura) ─────
@@ -233,14 +305,24 @@ export default {
     // Si en el futuro se agrega aquí un campo que dependa de una relación
     // (producto, detalles, entregas), hay que agregar el include
     // correspondiente o va a fallar igual que Producto.piedras falló antes.
-    historicoCostoOrdenes: async (_, { productoId, limit = 10 }, { prisma, user }) => {
+    historicoCostoOrdenes: async (
+      _,
+      { productoId, limit = 10 },
+      { prisma, user },
+    ) => {
       requireAuth(user);
-      const producto = await prisma.producto.findUnique({ where: { id: Number(productoId) } });
-      if (!producto) throw new Error('Producto no existe');
+      const producto = await prisma.producto.findUnique({
+        where: { id: Number(productoId) },
+      });
+      if (!producto) throw new Error("Producto no existe");
       validarEmpresa(producto.empresaId, user.empresaActualId);
       return prisma.ordenProduccion.findMany({
-        where: { productoId: Number(productoId), empresaId: user.empresaActualId, deletedAt: null },
-        orderBy: { fechaEnvio: 'desc' },
+        where: {
+          productoId: Number(productoId),
+          empresaId: user.empresaActualId,
+          deletedAt: null,
+        },
+        orderBy: { fechaEnvio: "desc" },
         take: Math.min(Number(limit) || 10, 50),
       });
     },
@@ -250,21 +332,48 @@ export default {
     crearOrdenProduccion: async (_, { input }, { prisma, user }) => {
       requireAuth(user);
       validarEmpresa(input.empresaId, user.empresaActualId);
-      const producto = await prisma.producto.findUnique({ where: { id: Number(input.productoId) }, include: { piedras: true } });
-      if (!producto) throw new Error('Producto no existe');
-      const costoInsumos = producto.piedras.reduce((s, pp) => s + Number(pp.costoEstandardTotal), 0);
-      const costoUnitarioEstandard = costoInsumos + Number(producto.costoManoObra) + Number(producto.costoOtros);
-      const costoTotalEstandard    = costoUnitarioEstandard * Number(input.cantidadProgramada);
+      const producto = await prisma.producto.findUnique({
+        where: { id: Number(input.productoId) },
+        include: { piedras: true },
+      });
+      if (!producto) throw new Error("Producto no existe");
+      const costoInsumos = producto.piedras.reduce(
+        (s, pp) => s + Number(pp.costoEstandardTotal),
+        0,
+      );
+      const costoUnitarioEstandard =
+        costoInsumos +
+        Number(producto.costoManoObra) +
+        Number(producto.costoOtros);
+      const costoTotalEstandard =
+        costoUnitarioEstandard * Number(input.cantidadProgramada);
       // ── NUEVO — el estado inicial SIEMPRE es Pendiente, sin importar
       // lo que venga en input.estadoId (en el formulario el campo ya
       // quedó oculto/solo-lectura, pero se protege también aquí).
-      const pendienteId = await obtenerEstadoOrdenId(prisma, user.empresaActualId, 'PEND');
+      const pendienteId = await obtenerEstadoOrdenId(
+        prisma,
+        user.empresaActualId,
+        "PEND",
+      );
       // ── NUEVO — el número de orden ya no lo escribe el usuario (ver
       // generarNumeroOrden arriba); lo que venga en input.numero se
       // ignora y se pisa con el generado aquí.
       const numero = await generarNumeroOrden(prisma, user.empresaActualId);
       return prisma.ordenProduccion.create({
-        data: { ...input, numero, estadoId: pendienteId, fechaEnvio: new Date(input.fechaEnvio), fechaEstimada: input.fechaEstimada?new Date(input.fechaEstimada):null, costoUnitarioEstandard, costoTotalEstandard, cantidadEntregada: 0, valorEntregado: 0, usu_creacion: user.codigo },
+        data: {
+          ...input,
+          numero,
+          estadoId: pendienteId,
+          fechaEnvio: new Date(input.fechaEnvio),
+          fechaEstimada: input.fechaEstimada
+            ? new Date(input.fechaEstimada)
+            : null,
+          costoUnitarioEstandard,
+          costoTotalEstandard,
+          cantidadEntregada: 0,
+          valorEntregado: 0,
+          usu_creacion: user.codigo,
+        },
         include: incluirOrden,
       });
     },
@@ -280,9 +389,11 @@ export default {
       const { id, version, estadoId, numero, ...data } = input;
       const original = await prisma.ordenProduccion.findUnique({
         where: { id: Number(id) },
-        include: { detalles: { where: { deletedAt: null }, select: { id: true } } },
+        include: {
+          detalles: { where: { deletedAt: null }, select: { id: true } },
+        },
       });
-      if (!original) throw new Error('Orden no existe');
+      if (!original) throw new Error("Orden no existe");
       validarEmpresa(original.empresaId, user.empresaActualId);
       // ── NUEVO — deber ser acordado con el usuario: cantidadProgramada
       // solo se puede modificar mientras la orden todavía no tiene
@@ -292,60 +403,100 @@ export default {
       // historia y descuadraría el costo total estándar (costo unitario
       // × cantidad programada). El formulario ya la deja de solo
       // lectura en ese caso; esto es el respaldo del lado del servidor.
-      if (original.detalles.length > 0) data.cantidadProgramada = original.cantidadProgramada;
-      const costoTotalEstandard = Number(original.costoUnitarioEstandard) * Number(data.cantidadProgramada);
+      if (original.detalles.length > 0)
+        data.cantidadProgramada = original.cantidadProgramada;
+      const costoTotalEstandard =
+        Number(original.costoUnitarioEstandard) *
+        Number(data.cantidadProgramada);
       const result = await prisma.ordenProduccion.updateMany({
         where: { id: Number(id), version: Number(version) },
-        data: { ...data, fechaEnvio: new Date(data.fechaEnvio), fechaEstimada: data.fechaEstimada?new Date(data.fechaEstimada):null, fechaEntrega: data.fechaEntrega?new Date(data.fechaEntrega):null, costoTotalEstandard, version: { increment: 1 }, usu_actualizacion: user.codigo },
+        data: {
+          ...data,
+          fechaEnvio: new Date(data.fechaEnvio),
+          fechaEstimada: data.fechaEstimada
+            ? new Date(data.fechaEstimada)
+            : null,
+          fechaEntrega: data.fechaEntrega ? new Date(data.fechaEntrega) : null,
+          costoTotalEstandard,
+          version: { increment: 1 },
+          usu_actualizacion: user.codigo,
+        },
       });
-      if (result.count === 0) throw new Error('Modificado por otro usuario');
-      return prisma.ordenProduccion.findUnique({ where: { id: Number(id) }, include: incluirOrden });
+      if (result.count === 0) throw new Error("Modificado por otro usuario");
+      return prisma.ordenProduccion.findUnique({
+        where: { id: Number(id) },
+        include: incluirOrden,
+      });
     },
 
     // ── REGISTRAR ENTREGA — genera remisión automática ────────────
     registrarEntregaOrden: async (_, { input }, { prisma, user }) => {
       requireAuth(user);
-      const { ordenProduccionId, cantidad, cantidadJoyero, numeroJoyero, nota } = input;
+      const {
+        ordenProduccionId,
+        cantidad,
+        cantidadJoyero,
+        numeroJoyero,
+        nota,
+      } = input;
 
       const orden = await prisma.ordenProduccion.findUnique({
         where: { id: ordenProduccionId },
-        include: { estado: true },
+        // ── CAMBIO (ronda 36) — se agrega `detalles` para poder calcular,
+        // línea por línea del BOM, cuánto insumo se da por consumido con
+        // esta entrega (Mecanismo 1, ver más abajo).
+        include: { estado: true, detalles: { where: { deletedAt: null } } },
       });
-      if (!orden) throw new Error('Orden no existe');
+      if (!orden) throw new Error("Orden no existe");
       validarEmpresa(orden.empresaId, user.empresaActualId);
       // ── NUEVO — no se puede recibir producto de una orden cancelada.
-      if (orden.estado?.codigo === 'CANC') throw new Error('Esta orden está cancelada — no se pueden registrar entregas');
+      if (orden.estado?.codigo === "CANC")
+        throw new Error(
+          "Esta orden está cancelada — no se pueden registrar entregas",
+        );
 
       const pendientes = orden.cantidadProgramada - orden.cantidadEntregada;
       if (cantidad > pendientes)
-        throw new Error(`Solo quedan ${pendientes} piezas pendientes de entrega`);
+        throw new Error(
+          `Solo quedan ${pendientes} piezas pendientes de entrega`,
+        );
 
       // Determinar estado de conciliación inicial
-      const hasDiferencia = cantidadJoyero !== null && cantidadJoyero !== undefined && cantidadJoyero !== cantidad;
-      const estadoConciliacion = hasDiferencia ? 'DISPUTA' : 'PENDIENTE';
+      const hasDiferencia =
+        cantidadJoyero !== null &&
+        cantidadJoyero !== undefined &&
+        cantidadJoyero !== cantidad;
+      const estadoConciliacion = hasDiferencia ? "DISPUTA" : "PENDIENTE";
 
       const valorPorUnidad = Number(orden.costoUnitarioEstandard);
       const valorEntregado = cantidad * valorPorUnidad;
-      const esFinal        = (orden.cantidadEntregada + cantidad) >= orden.cantidadProgramada;
+      const esFinal =
+        orden.cantidadEntregada + cantidad >= orden.cantidadProgramada;
       // ── NUEVO — si esta entrega completa la orden, el estado pasa
       // solo a "Entregada" (mismo momento en que ya se guardaba fechaEntrega).
-      const entregadaId = esFinal ? await obtenerEstadoOrdenId(prisma, orden.empresaId, 'ENTR') : null;
+      const entregadaId = esFinal
+        ? await obtenerEstadoOrdenId(prisma, orden.empresaId, "ENTR")
+        : null;
 
       // Generar número de remisión automático
-      const numeroRemision = await generarNumeroRemision(prisma, ordenProduccionId, orden.numero);
+      const numeroRemision = await generarNumeroRemision(
+        prisma,
+        ordenProduccionId,
+        orden.numero,
+      );
 
       await prisma.$transaction(async (tx) => {
         await tx.entregaOrden.create({
           data: {
             ordenProduccionId,
             numeroRemision,
-            numeroJoyero:       numeroJoyero ?? null,
+            numeroJoyero: numeroJoyero ?? null,
             cantidad,
-            cantidadJoyero:     cantidadJoyero ?? null,
+            cantidadJoyero: cantidadJoyero ?? null,
             valorEntregado,
             estadoConciliacion,
-            nota:               nota ?? null,
-            usu_creacion:       user.codigo,
+            nota: nota ?? null,
+            usu_creacion: user.codigo,
           },
         });
 
@@ -353,34 +504,105 @@ export default {
           where: { id: ordenProduccionId },
           data: {
             cantidadEntregada: { increment: cantidad },
-            valorEntregado:    { increment: valorEntregado },
+            valorEntregado: { increment: valorEntregado },
             ...(esFinal && { fechaEntrega: new Date(), estadoId: entregadaId }),
-            version:           { increment: 1 },
+            version: { increment: 1 },
             usu_actualizacion: user.codigo,
           },
         });
 
         await tx.producto.update({
           where: { id: orden.productoId },
-          data:  { enStock: { increment: cantidad } },
+          data: { enStock: { increment: cantidad } },
         });
+
+        // ── NUEVO (ronda 36) — Mecanismo 1: consumo de insumo por esta
+        // entrega, acordado con el usuario. Por cada línea del BOM de
+        // esta orden, la porción que corresponde a las `cantidad` piezas
+        // que se están entregando AHORA se da por consumida — ya se
+        // convirtió en producto terminado, deja de estar "en poder del
+        // joyero". Se registran DOS movimientos (no uno), para que el
+        // historial cuente la historia completa: el insumo "vuelve" al
+        // sistema encarnado en la pieza (ENTRADA_CONSUMO, cierra la
+        // custodia) y de inmediato "sale" porque se consumió
+        // (SALIDA_CONSUMO, puramente informativo — la custodia ya quedó
+        // cerrada en la línea de arriba). Ninguna de las dos toca
+        // `compraInsumo.cantidadDisponible`: el insumo ya había salido
+        // del inventario disponible cuando se envió al joyero, y no
+        // vuelve a existir como materia prima. Esto es solo para el
+        // flujo NORMAL (piezas que sí se entregaron) — qué pasa con
+        // insumo enviado que NUNCA se convierte en pieza (orden cerrada
+        // con faltante) queda fuera de este cambio, a propósito.
+        for (const d of orden.detalles) {
+          const consumoLinea =
+            Math.round(
+              (Number(d.cantidad) / Number(orden.cantidadProgramada)) *
+                cantidad *
+                10000,
+            ) / 10000;
+          if (consumoLinea <= 0) continue;
+          const valorConsumidoLinea =
+            Math.round(consumoLinea * Number(d.costoUnitario) * 100) / 100;
+          const notaAuto = `Consumo automático — entrega de ${cantidad} unidad${cantidad === 1 ? "" : "es"} (remisión ${numeroRemision})`;
+
+          await tx.movimientoInsumoOrden.create({
+            data: {
+              detalleOrdenProduccionId: d.id,
+              compraInsumoId: d.compraInsumoId,
+              tipoMovimiento: "ENTRADA_CONSUMO",
+              cantidad: consumoLinea,
+              valor: valorConsumidoLinea,
+              nota: notaAuto,
+              usu_creacion: user.codigo,
+            },
+          });
+          await tx.movimientoInsumoOrden.create({
+            data: {
+              detalleOrdenProduccionId: d.id,
+              compraInsumoId: d.compraInsumoId,
+              tipoMovimiento: "SALIDA_CONSUMO",
+              cantidad: consumoLinea,
+              valor: valorConsumidoLinea,
+              nota: notaAuto,
+              usu_creacion: user.codigo,
+            },
+          });
+          await tx.detalleOrdenProduccion.update({
+            where: { id: d.id },
+            data: {
+              cantidadConsumida: { increment: consumoLinea },
+              valorConsumido: { increment: valorConsumidoLinea },
+              usu_actualizacion: user.codigo,
+            },
+          });
+        }
       });
 
-      return prisma.ordenProduccion.findUnique({ where: { id: ordenProduccionId }, include: incluirOrden });
+      return prisma.ordenProduccion.findUnique({
+        where: { id: ordenProduccionId },
+        include: incluirOrden,
+      });
     },
 
     // ── CONCILIAR ENTREGA ────────────────────────────────────────
     conciliarEntrega: async (_, { input }, { prisma, user }) => {
       requireAuth(user);
       const { id, version, estadoConciliacion, notaConciliacion } = input;
-      const entrega = await prisma.entregaOrden.findUnique({ where: { id: Number(id) }, include: { ordenProduccion: true } });
-      if (!entrega) throw new Error('Entrega no existe');
+      const entrega = await prisma.entregaOrden.findUnique({
+        where: { id: Number(id) },
+        include: { ordenProduccion: true },
+      });
+      if (!entrega) throw new Error("Entrega no existe");
       validarEmpresa(entrega.ordenProduccion.empresaId, user.empresaActualId);
       const result = await prisma.entregaOrden.updateMany({
         where: { id: Number(id), version: Number(version) },
-        data:  { estadoConciliacion, notaConciliacion: notaConciliacion ?? null, version: { increment: 1 } },
+        data: {
+          estadoConciliacion,
+          notaConciliacion: notaConciliacion ?? null,
+          version: { increment: 1 },
+        },
       });
-      if (result.count === 0) throw new Error('Modificado por otro usuario');
+      if (result.count === 0) throw new Error("Modificado por otro usuario");
       return prisma.entregaOrden.findUnique({ where: { id: Number(id) } });
     },
 
@@ -388,22 +610,39 @@ export default {
       requireAuth(user);
       const original = await prisma.ordenProduccion.findUnique({
         where: { id: Number(id) },
-        include: { detalles: { where: { deletedAt: null }, include: { movimientos: { where: { deletedAt: null } } } } },
+        include: {
+          detalles: {
+            where: { deletedAt: null },
+            include: { movimientos: { where: { deletedAt: null } } },
+          },
+        },
       });
-      if (!original) throw new Error('Orden no existe');
+      if (!original) throw new Error("Orden no existe");
       validarEmpresa(original.empresaId, user.empresaActualId);
-      if (original.cantidadEntregada > 0) throw new Error('No se puede eliminar una orden con entregas registradas');
+      if (original.cantidadEntregada > 0)
+        throw new Error(
+          "No se puede eliminar una orden con entregas registradas",
+        );
       await prisma.$transaction(async (tx) => {
         // Revierte cada movimiento (envíos devuelven stock, devoluciones lo restan)
         // en vez de asumir un solo lote por línea — un detalle puede tener envíos
         // adicionales desde lotes distintos al inicial.
         for (const d of original.detalles) {
           for (const m of d.movimientos) {
-            const ajuste = m.tipoMovimiento === 'DEVOLUCION' ? -Number(m.cantidad) : Number(m.cantidad);
-            await tx.compraInsumo.update({ where: { id: m.compraInsumoId }, data: { cantidadDisponible: { increment: ajuste } } });
+            const ajuste =
+              m.tipoMovimiento === "DEVOLUCION"
+                ? -Number(m.cantidad)
+                : Number(m.cantidad);
+            await tx.compraInsumo.update({
+              where: { id: m.compraInsumoId },
+              data: { cantidadDisponible: { increment: ajuste } },
+            });
           }
         }
-        await tx.ordenProduccion.update({ where: { id: Number(id) }, data: { deletedAt: new Date(), usu_actualizacion: user.codigo } });
+        await tx.ordenProduccion.update({
+          where: { id: Number(id) },
+          data: { deletedAt: new Date(), usu_actualizacion: user.codigo },
+        });
       });
       return true;
     },
@@ -415,35 +654,66 @@ export default {
         where: { id: input.ordenProduccionId },
         include: { estado: true },
       });
-      if (!orden) throw new Error('Orden no existe');
+      if (!orden) throw new Error("Orden no existe");
       validarEmpresa(orden.empresaId, user.empresaActualId);
       // ── NUEVO — no se puede enviar más insumo a una orden cancelada.
-      if (orden.estado?.codigo === 'CANC') throw new Error('Esta orden está cancelada — no se pueden enviar insumos');
-      const compra = await prisma.compraInsumo.findUnique({ where: { id: input.compraInsumoId } });
-      if (!compra) throw new Error('El lote de compra no existe');
-      if (Number(compra.cantidadDisponible) < Number(input.cantidadEnviada)) throw new Error(`Stock insuficiente. Disponible: ${compra.cantidadDisponible}`);
+      if (orden.estado?.codigo === "CANC")
+        throw new Error(
+          "Esta orden está cancelada — no se pueden enviar insumos",
+        );
+      const compra = await prisma.compraInsumo.findUnique({
+        where: { id: input.compraInsumoId },
+      });
+      if (!compra) throw new Error("El lote de compra no existe");
+      if (Number(compra.cantidadDisponible) < Number(input.cantidadEnviada))
+        throw new Error(
+          `Stock insuficiente. Disponible: ${compra.cantidadDisponible}`,
+        );
 
       // ── NUEVO — primer insumo entregado: la orden pasa de Pendiente a
       // En proceso. Transición atómica (updateMany con el estadoId
       // actual en el where) para no pisar un estado distinto si esto se
       // llama después de que la orden ya avanzó.
-      const pendienteId = await obtenerEstadoOrdenId(prisma, orden.empresaId, 'PEND');
-      const procesoId   = await obtenerEstadoOrdenId(prisma, orden.empresaId, 'PROC');
+      const pendienteId = await obtenerEstadoOrdenId(
+        prisma,
+        orden.empresaId,
+        "PEND",
+      );
+      const procesoId = await obtenerEstadoOrdenId(
+        prisma,
+        orden.empresaId,
+        "PROC",
+      );
       // ── NUEVO — remisión de envío para este insumo.
-      const numeroRemisionEnvio = await generarNumeroRemisionEnvio(prisma, orden.id, orden.numero);
+      const numeroRemisionEnvio = await generarNumeroRemisionEnvio(
+        prisma,
+        orden.id,
+        orden.numero,
+      );
 
       return prisma.$transaction(async (tx) => {
-        await tx.compraInsumo.update({ where: { id: input.compraInsumoId }, data: { cantidadDisponible: { decrement: Number(input.cantidadEnviada) } } });
+        await tx.compraInsumo.update({
+          where: { id: input.compraInsumoId },
+          data: {
+            cantidadDisponible: { decrement: Number(input.cantidadEnviada) },
+          },
+        });
 
         const detalle = await tx.detalleOrdenProduccion.create({
-          data: { ...input, desperdicio: input.desperdicio ?? 0, cantidadDevuelta: 0, valorDevuelto: 0, usu_creacion: user.codigo },
+          data: {
+            ...input,
+            desperdicio: input.desperdicio ?? 0,
+            cantidadDevuelta: 0,
+            valorDevuelto: 0,
+            usu_creacion: user.codigo,
+          },
         });
 
         await tx.movimientoInsumoOrden.create({
           data: {
             detalleOrdenProduccionId: detalle.id,
             compraInsumoId: input.compraInsumoId,
-            tipoMovimiento: 'INICIAL',
+            tipoMovimiento: "INICIAL",
             cantidad: Number(input.cantidadEnviada),
             valor: Number(input.valorEnviado),
             numeroRemision: numeroRemisionEnvio,
@@ -456,7 +726,10 @@ export default {
           data: { estadoId: procesoId },
         });
 
-        return tx.detalleOrdenProduccion.findUnique({ where: { id: detalle.id }, include: incluirDetalle });
+        return tx.detalleOrdenProduccion.findUnique({
+          where: { id: detalle.id },
+          include: incluirDetalle,
+        });
       });
     },
 
@@ -469,37 +742,62 @@ export default {
     agregarDetallesOrdenLote: async (_, { input }, { prisma, user }) => {
       requireAuth(user);
       const { ordenProduccionId, detalles } = input;
-      if (!detalles?.length) throw new Error('Debe incluir al menos un insumo');
+      if (!detalles?.length) throw new Error("Debe incluir al menos un insumo");
 
       const orden = await prisma.ordenProduccion.findUnique({
         where: { id: Number(ordenProduccionId) },
         include: { estado: true },
       });
-      if (!orden) throw new Error('Orden no existe');
+      if (!orden) throw new Error("Orden no existe");
       validarEmpresa(orden.empresaId, user.empresaActualId);
-      if (orden.estado?.codigo === 'CANC') throw new Error('Esta orden está cancelada — no se pueden enviar insumos');
+      if (orden.estado?.codigo === "CANC")
+        throw new Error(
+          "Esta orden está cancelada — no se pueden enviar insumos",
+        );
 
       // Validar stock de cada lote ANTES de mover nada — evita dejar
       // movimientos parciales si uno de los lotes no alcanza a mitad
       // del lote de envíos.
       for (const d of detalles) {
-        const compra = await prisma.compraInsumo.findUnique({ where: { id: Number(d.compraInsumoId) } });
-        if (!compra) throw new Error(`El lote de compra ${d.compraInsumoId} no existe`);
+        const compra = await prisma.compraInsumo.findUnique({
+          where: { id: Number(d.compraInsumoId) },
+        });
+        if (!compra)
+          throw new Error(`El lote de compra ${d.compraInsumoId} no existe`);
         if (Number(compra.cantidadDisponible) < Number(d.cantidadEnviada))
-          throw new Error(`Stock insuficiente en el lote ${compra.numero}. Disponible: ${compra.cantidadDisponible}`);
+          throw new Error(
+            `Stock insuficiente en el lote ${compra.numero}. Disponible: ${compra.cantidadDisponible}`,
+          );
       }
 
-      const pendienteId = await obtenerEstadoOrdenId(prisma, orden.empresaId, 'PEND');
-      const procesoId   = await obtenerEstadoOrdenId(prisma, orden.empresaId, 'PROC');
+      const pendienteId = await obtenerEstadoOrdenId(
+        prisma,
+        orden.empresaId,
+        "PEND",
+      );
+      const procesoId = await obtenerEstadoOrdenId(
+        prisma,
+        orden.empresaId,
+        "PROC",
+      );
       // ── UNA sola remisión para todo el lote (se genera una vez, se
       // reutiliza en cada línea) — esto es justo lo que lo diferencia
       // de llamar agregarDetalleOrden varias veces seguidas.
-      const numeroRemisionEnvio = await generarNumeroRemisionEnvio(prisma, orden.id, orden.numero);
+      const numeroRemisionEnvio = await generarNumeroRemisionEnvio(
+        prisma,
+        orden.id,
+        orden.numero,
+      );
 
       const idsCreados = await prisma.$transaction(async (tx) => {
         const ids = [];
         for (const d of detalles) {
-          await tx.compraInsumo.update({ where: { id: Number(d.compraInsumoId) }, data: { cantidadDisponible: { decrement: Number(d.cantidadEnviada) } } });
+          await tx.compraInsumo.update({
+            where: { id: Number(d.compraInsumoId) },
+            data: {
+              cantidadDisponible: { decrement: Number(d.cantidadEnviada) },
+            },
+          });
 
           const detalle = await tx.detalleOrdenProduccion.create({
             data: {
@@ -522,7 +820,7 @@ export default {
             data: {
               detalleOrdenProduccionId: detalle.id,
               compraInsumoId: Number(d.compraInsumoId),
-              tipoMovimiento: 'INICIAL',
+              tipoMovimiento: "INICIAL",
               cantidad: Number(d.cantidadEnviada),
               valor: Number(d.valorEnviado),
               numeroRemision: numeroRemisionEnvio,
@@ -541,7 +839,10 @@ export default {
         return ids;
       });
 
-      return prisma.detalleOrdenProduccion.findMany({ where: { id: { in: idsCreados } }, include: incluirDetalle });
+      return prisma.detalleOrdenProduccion.findMany({
+        where: { id: { in: idsCreados } },
+        include: incluirDetalle,
+      });
     },
 
     // ── NUEVO — reemplaza a registrarDevolucion ────────────────────
@@ -552,42 +853,64 @@ export default {
     // se actualizan con increment, nunca se sobrescriben a mano.
     registrarMovimientoInsumo: async (_, { input }, { prisma, user }) => {
       requireAuth(user);
-      const { detalleOrdenProduccionId, compraInsumoId, tipoMovimiento, cantidad, nota } = input;
+      const {
+        detalleOrdenProduccionId,
+        compraInsumoId,
+        tipoMovimiento,
+        cantidad,
+        nota,
+      } = input;
 
-      if (!['ADICIONAL', 'DEVOLUCION'].includes(tipoMovimiento))
+      if (!["ADICIONAL", "DEVOLUCION"].includes(tipoMovimiento))
         throw new Error("tipoMovimiento debe ser 'ADICIONAL' o 'DEVOLUCION'");
       if (!nota?.trim())
-        throw new Error('La nota es obligatoria para registrar este movimiento');
+        throw new Error(
+          "La nota es obligatoria para registrar este movimiento",
+        );
       if (!cantidad || Number(cantidad) <= 0)
-        throw new Error('La cantidad debe ser mayor a cero');
+        throw new Error("La cantidad debe ser mayor a cero");
 
       const detalle = await prisma.detalleOrdenProduccion.findUnique({
         where: { id: Number(detalleOrdenProduccionId) },
         include: { ordenProduccion: { include: { estado: true } } },
       });
-      if (!detalle) throw new Error('El detalle no existe');
+      if (!detalle) throw new Error("El detalle no existe");
       validarEmpresa(detalle.ordenProduccion.empresaId, user.empresaActualId);
       // ── NUEVO — no se pueden registrar movimientos sobre una orden cancelada.
-      if (detalle.ordenProduccion.estado?.codigo === 'CANC') throw new Error('Esta orden está cancelada — no se pueden registrar movimientos de insumo');
+      if (detalle.ordenProduccion.estado?.codigo === "CANC")
+        throw new Error(
+          "Esta orden está cancelada — no se pueden registrar movimientos de insumo",
+        );
 
-      const compra = await prisma.compraInsumo.findUnique({ where: { id: Number(compraInsumoId) } });
-      if (!compra) throw new Error('El lote de compra no existe');
+      const compra = await prisma.compraInsumo.findUnique({
+        where: { id: Number(compraInsumoId) },
+      });
+      if (!compra) throw new Error("El lote de compra no existe");
 
-      if (tipoMovimiento === 'ADICIONAL') {
+      if (tipoMovimiento === "ADICIONAL") {
         if (Number(compra.cantidadDisponible) < Number(cantidad))
-          throw new Error(`Stock insuficiente en ese lote. Disponible: ${compra.cantidadDisponible}`);
+          throw new Error(
+            `Stock insuficiente en ese lote. Disponible: ${compra.cantidadDisponible}`,
+          );
 
         const valor = Number(cantidad) * Number(compra.costoUnitario);
         // ── NUEVO — remisión de envío para este envío adicional.
-        const numeroRemisionEnvio = await generarNumeroRemisionEnvio(prisma, detalle.ordenProduccion.id, detalle.ordenProduccion.numero);
+        const numeroRemisionEnvio = await generarNumeroRemisionEnvio(
+          prisma,
+          detalle.ordenProduccion.id,
+          detalle.ordenProduccion.numero,
+        );
 
         return prisma.$transaction(async (tx) => {
-          await tx.compraInsumo.update({ where: { id: compra.id }, data: { cantidadDisponible: { decrement: Number(cantidad) } } });
+          await tx.compraInsumo.update({
+            where: { id: compra.id },
+            data: { cantidadDisponible: { decrement: Number(cantidad) } },
+          });
           await tx.movimientoInsumoOrden.create({
             data: {
               detalleOrdenProduccionId: detalle.id,
               compraInsumoId: compra.id,
-              tipoMovimiento: 'ADICIONAL',
+              tipoMovimiento: "ADICIONAL",
               cantidad: Number(cantidad),
               valor,
               nota,
@@ -599,28 +922,37 @@ export default {
             where: { id: detalle.id },
             data: {
               cantidadEnviada: { increment: Number(cantidad) },
-              valorEnviado:    { increment: valor },
+              valorEnviado: { increment: valor },
               usu_actualizacion: user.codigo,
             },
           });
-          return tx.detalleOrdenProduccion.findUnique({ where: { id: detalle.id }, include: incluirDetalle });
+          return tx.detalleOrdenProduccion.findUnique({
+            where: { id: detalle.id },
+            include: incluirDetalle,
+          });
         });
       }
 
       // DEVOLUCION
-      const disponibleParaDevolver = Number(detalle.cantidadEnviada) - Number(detalle.cantidadDevuelta);
+      const disponibleParaDevolver =
+        Number(detalle.cantidadEnviada) - Number(detalle.cantidadDevuelta);
       if (Number(cantidad) > disponibleParaDevolver)
-        throw new Error(`No puede devolver más de lo enviado. Disponible para devolver: ${disponibleParaDevolver}`);
+        throw new Error(
+          `No puede devolver más de lo enviado. Disponible para devolver: ${disponibleParaDevolver}`,
+        );
 
       const valor = Number(cantidad) * Number(detalle.costoUnitario);
 
       return prisma.$transaction(async (tx) => {
-        await tx.compraInsumo.update({ where: { id: compra.id }, data: { cantidadDisponible: { increment: Number(cantidad) } } });
+        await tx.compraInsumo.update({
+          where: { id: compra.id },
+          data: { cantidadDisponible: { increment: Number(cantidad) } },
+        });
         await tx.movimientoInsumoOrden.create({
           data: {
             detalleOrdenProduccionId: detalle.id,
             compraInsumoId: compra.id,
-            tipoMovimiento: 'DEVOLUCION',
+            tipoMovimiento: "DEVOLUCION",
             cantidad: Number(cantidad),
             valor,
             nota,
@@ -631,11 +963,14 @@ export default {
           where: { id: detalle.id },
           data: {
             cantidadDevuelta: { increment: Number(cantidad) },
-            valorDevuelto:    { increment: valor },
+            valorDevuelto: { increment: valor },
             usu_actualizacion: user.codigo,
           },
         });
-        return tx.detalleOrdenProduccion.findUnique({ where: { id: detalle.id }, include: incluirDetalle });
+        return tx.detalleOrdenProduccion.findUnique({
+          where: { id: detalle.id },
+          include: incluirDetalle,
+        });
       });
     },
 
@@ -654,9 +989,14 @@ export default {
     //     borra el historial existente.
     //  3. El motivo es obligatorio y queda registrado tanto en la nota
     //     de la orden como en la nota de cada devolución automática.
-    cancelarOrdenProduccion: async (_, { id, version, motivo }, { prisma, user }) => {
+    cancelarOrdenProduccion: async (
+      _,
+      { id, version, motivo },
+      { prisma, user },
+    ) => {
       requireAuth(user);
-      if (!motivo?.trim()) throw new Error('El motivo de cancelación es obligatorio');
+      if (!motivo?.trim())
+        throw new Error("El motivo de cancelación es obligatorio");
 
       const orden = await prisma.ordenProduccion.findUnique({
         where: { id: Number(id) },
@@ -665,30 +1005,41 @@ export default {
           detalles: { where: { deletedAt: null } },
         },
       });
-      if (!orden) throw new Error('Orden no existe');
+      if (!orden) throw new Error("Orden no existe");
       validarEmpresa(orden.empresaId, user.empresaActualId);
-      if (orden.estado?.codigo === 'CANC') throw new Error('La orden ya está cancelada');
+      if (orden.estado?.codigo === "CANC")
+        throw new Error("La orden ya está cancelada");
       if (Number(orden.cantidadEntregada) > 0)
-        throw new Error('No se puede cancelar una orden que ya tiene piezas entregadas por el joyero');
+        throw new Error(
+          "No se puede cancelar una orden que ya tiene piezas entregadas por el joyero",
+        );
 
-      const canceladaId = await obtenerEstadoOrdenId(prisma, orden.empresaId, 'CANC');
-      const motivoTrim  = motivo.trim();
-      const fechaTexto  = new Date().toLocaleDateString('es-CO');
-      const notaNueva   = orden.nota
+      const canceladaId = await obtenerEstadoOrdenId(
+        prisma,
+        orden.empresaId,
+        "CANC",
+      );
+      const motivoTrim = motivo.trim();
+      const fechaTexto = new Date().toLocaleDateString("es-CO");
+      const notaNueva = orden.nota
         ? `${orden.nota}\n[CANCELADA ${fechaTexto}] ${motivoTrim}`
         : `[CANCELADA ${fechaTexto}] ${motivoTrim}`;
 
       await prisma.$transaction(async (tx) => {
         for (const d of orden.detalles) {
-          const pendiente = Number(d.cantidadEnviada) - Number(d.cantidadDevuelta);
+          const pendiente =
+            Number(d.cantidadEnviada) - Number(d.cantidadDevuelta);
           if (pendiente <= 0) continue;
           const valor = pendiente * Number(d.costoUnitario);
-          await tx.compraInsumo.update({ where: { id: d.compraInsumoId }, data: { cantidadDisponible: { increment: pendiente } } });
+          await tx.compraInsumo.update({
+            where: { id: d.compraInsumoId },
+            data: { cantidadDisponible: { increment: pendiente } },
+          });
           await tx.movimientoInsumoOrden.create({
             data: {
               detalleOrdenProduccionId: d.id,
               compraInsumoId: d.compraInsumoId,
-              tipoMovimiento: 'DEVOLUCION',
+              tipoMovimiento: "DEVOLUCION",
               cantidad: pendiente,
               valor,
               nota: `Devolución automática por cancelación de orden — ${motivoTrim}`,
@@ -697,7 +1048,11 @@ export default {
           });
           await tx.detalleOrdenProduccion.update({
             where: { id: d.id },
-            data: { cantidadDevuelta: { increment: pendiente }, valorDevuelto: { increment: valor }, usu_actualizacion: user.codigo },
+            data: {
+              cantidadDevuelta: { increment: pendiente },
+              valorDevuelto: { increment: valor },
+              usu_actualizacion: user.codigo,
+            },
           });
         }
 
@@ -710,10 +1065,13 @@ export default {
             usu_actualizacion: user.codigo,
           },
         });
-        if (result.count === 0) throw new Error('Modificado por otro usuario');
+        if (result.count === 0) throw new Error("Modificado por otro usuario");
       });
 
-      return prisma.ordenProduccion.findUnique({ where: { id: orden.id }, include: incluirOrden });
+      return prisma.ordenProduccion.findUnique({
+        where: { id: orden.id },
+        include: incluirOrden,
+      });
     },
 
     // ── NUEVO — cerrar una orden con entrega parcial ─────────────────
@@ -732,27 +1090,40 @@ export default {
     // una decisión de negocio entre la joyería y el joyero, por fuera
     // del sistema — si aplica una devolución, se registra aparte con
     // el flujo normal de Devolución en la fila de ese insumo.
-    cerrarOrdenProduccion: async (_, { id, version, motivo }, { prisma, user }) => {
+    cerrarOrdenProduccion: async (
+      _,
+      { id, version, motivo },
+      { prisma, user },
+    ) => {
       requireAuth(user);
-      if (!motivo?.trim()) throw new Error('El motivo del cierre es obligatorio');
+      if (!motivo?.trim())
+        throw new Error("El motivo del cierre es obligatorio");
 
       const orden = await prisma.ordenProduccion.findUnique({
         where: { id: Number(id) },
         include: { estado: true },
       });
-      if (!orden) throw new Error('Orden no existe');
+      if (!orden) throw new Error("Orden no existe");
       validarEmpresa(orden.empresaId, user.empresaActualId);
-      if (orden.estado?.codigo === 'CANC') throw new Error('Esta orden ya está cancelada');
-      if (orden.estado?.codigo === 'ENTR') throw new Error('Esta orden ya está entregada');
+      if (orden.estado?.codigo === "CANC")
+        throw new Error("Esta orden ya está cancelada");
+      if (orden.estado?.codigo === "ENTR")
+        throw new Error("Esta orden ya está entregada");
       if (Number(orden.cantidadEntregada) === 0)
-        throw new Error('Esta orden no tiene piezas entregadas — use "Cancelar orden" en vez de cerrarla');
+        throw new Error(
+          'Esta orden no tiene piezas entregadas — use "Cancelar orden" en vez de cerrarla',
+        );
       if (Number(orden.cantidadEntregada) >= Number(orden.cantidadProgramada))
-        throw new Error('Esta orden ya completó todas las piezas programadas');
+        throw new Error("Esta orden ya completó todas las piezas programadas");
 
-      const entregadaId = await obtenerEstadoOrdenId(prisma, orden.empresaId, 'ENTR');
-      const motivoTrim  = motivo.trim();
-      const fechaTexto  = new Date().toLocaleDateString('es-CO');
-      const notaNueva   = orden.nota
+      const entregadaId = await obtenerEstadoOrdenId(
+        prisma,
+        orden.empresaId,
+        "ENTR",
+      );
+      const motivoTrim = motivo.trim();
+      const fechaTexto = new Date().toLocaleDateString("es-CO");
+      const notaNueva = orden.nota
         ? `${orden.nota}\n[CERRADA CON ENTREGA PARCIAL ${fechaTexto}] ${motivoTrim}`
         : `[CERRADA CON ENTREGA PARCIAL ${fechaTexto}] ${motivoTrim}`;
 
@@ -766,25 +1137,43 @@ export default {
           usu_actualizacion: user.codigo,
         },
       });
-      if (result.count === 0) throw new Error('Modificado por otro usuario');
-      return prisma.ordenProduccion.findUnique({ where: { id: orden.id }, include: incluirOrden });
+      if (result.count === 0) throw new Error("Modificado por otro usuario");
+      return prisma.ordenProduccion.findUnique({
+        where: { id: orden.id },
+        include: incluirOrden,
+      });
     },
 
     eliminarDetalleOrden: async (_, { id }, { prisma, user }) => {
       requireAuth(user);
       const detalle = await prisma.detalleOrdenProduccion.findUnique({
         where: { id: Number(id) },
-        include: { ordenProduccion: true, movimientos: { where: { deletedAt: null } } },
+        include: {
+          ordenProduccion: true,
+          movimientos: { where: { deletedAt: null } },
+        },
       });
-      if (!detalle) throw new Error('No existe');
+      if (!detalle) throw new Error("No existe");
       validarEmpresa(detalle.ordenProduccion.empresaId, user.empresaActualId);
       await prisma.$transaction(async (tx) => {
         for (const m of detalle.movimientos) {
-          const ajuste = m.tipoMovimiento === 'DEVOLUCION' ? -Number(m.cantidad) : Number(m.cantidad);
-          await tx.compraInsumo.update({ where: { id: m.compraInsumoId }, data: { cantidadDisponible: { increment: ajuste } } });
-          await tx.movimientoInsumoOrden.update({ where: { id: m.id }, data: { deletedAt: new Date() } });
+          const ajuste =
+            m.tipoMovimiento === "DEVOLUCION"
+              ? -Number(m.cantidad)
+              : Number(m.cantidad);
+          await tx.compraInsumo.update({
+            where: { id: m.compraInsumoId },
+            data: { cantidadDisponible: { increment: ajuste } },
+          });
+          await tx.movimientoInsumoOrden.update({
+            where: { id: m.id },
+            data: { deletedAt: new Date() },
+          });
         }
-        await tx.detalleOrdenProduccion.update({ where: { id: Number(id) }, data: { deletedAt: new Date(), usu_actualizacion: user.codigo } });
+        await tx.detalleOrdenProduccion.update({
+          where: { id: Number(id) },
+          data: { deletedAt: new Date(), usu_actualizacion: user.codigo },
+        });
       });
       return true;
     },

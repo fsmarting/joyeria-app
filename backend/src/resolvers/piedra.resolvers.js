@@ -3,7 +3,24 @@ import { validarEmpresa } from "../utils/validations.js";
 
 const inc = { tipo: true, unidad: true };
 
+// ── NUEVO (ronda 36) — Ajustes de Inventario de Insumos (Mecanismo 2).
+// Mismo patrón que generarNumeroAjuste en producto.resolvers.js, prefijo
+// distinto (AJS- de "ajuste de insumo") para no mezclarse con los
+// ajustes de Producto (AJI-).
+const generarNumeroAjusteInsumo = async (prisma, empresaId) => {
+  const anio = new Date().getFullYear();
+  const prefijo = `AJS-${anio}-`;
+  const count = await prisma.ajusteInsumo.count({
+    where: { empresaId, numero: { startsWith: prefijo } },
+  });
+  const consecutivo = String(count + 1).padStart(3, "0");
+  return `${prefijo}${consecutivo}`;
+};
+
 export default {
+  AjusteInsumo: {
+    fecha: (a) => (a.fecha ? new Date(a.fecha).toISOString() : null),
+  },
   // ── NUEVO — visibilidad de inventario de insumos ──────────────────
   Piedra: {
     stockDisponible: async (p, _, { prisma }) => {
@@ -198,6 +215,44 @@ export default {
             salidaValor: 0,
             variacionCustodiaValor: -valorMov,
           });
+        } else if (m.tipoMovimiento === "ENTRADA_CONSUMO") {
+          // ── NUEVO (ronda 36) — Mecanismo 1, primera de las dos líneas:
+          // el insumo "vuelve" al sistema encarnado en la pieza entregada
+          // — cierra la custodia (el joyero ya no lo tiene), pero NO es
+          // una entrada real de materia prima disponible (no suma a
+          // "Compras" ni a "Saldo Actual" — el insumo no vuelve a existir
+          // como tal, se convirtió en producto).
+          movimientos.push({
+            fecha: m.fecha,
+            tipo: "Consumido en producto terminado",
+            referencia,
+            cantidad,
+            entradaStock: 0,
+            salidaStock: 0,
+            variacionCustodia: -cantidad,
+            joyero: nombreJoyero,
+            entradaValor: 0,
+            salidaValor: 0,
+            variacionCustodiaValor: -valorMov,
+          });
+        } else if (m.tipoMovimiento === "SALIDA_CONSUMO") {
+          // ── NUEVO (ronda 36) — segunda línea del mismo evento: registra
+          // que ese insumo, ya "de vuelta", se consumió de inmediato — es
+          // puramente informativa (la custodia ya se cerró en la línea de
+          // ENTRADA_CONSUMO de arriba), no mueve ningún número adicional.
+          movimientos.push({
+            fecha: m.fecha,
+            tipo: "Consumo confirmado — no vuelve al inventario",
+            referencia,
+            cantidad,
+            entradaStock: 0,
+            salidaStock: 0,
+            variacionCustodia: 0,
+            joyero: nombreJoyero,
+            entradaValor: 0,
+            salidaValor: 0,
+            variacionCustodiaValor: 0,
+          });
         } else {
           movimientos.push({
             fecha: m.fecha,
@@ -216,6 +271,36 @@ export default {
             variacionCustodiaValor: valorMov,
           });
         }
+      }
+
+      // 3. Ajustes de inventario de insumo (pérdida en bodega) — ronda 36,
+      // Mecanismo 2. Se valoriza con el costo REAL del lote afectado
+      // (mismo criterio de la ronda 33), no un costo estándar.
+      const ajustes = await prisma.ajusteInsumo.findMany({
+        where: {
+          piedraId: Number(piedraId),
+          empresaId: user.empresaActualId,
+          deletedAt: null,
+        },
+        include: { compraInsumo: { select: { costoUnitario: true } } },
+      });
+      for (const a of ajustes) {
+        const cantidad = Number(a.cantidad);
+        const costoUnitarioLote = Number(a.compraInsumo?.costoUnitario ?? 0);
+        const valorAjuste = cantidad * costoUnitarioLote;
+        movimientos.push({
+          fecha: a.fecha,
+          tipo: "Ajuste — pérdida en bodega",
+          referencia: a.numero,
+          cantidad,
+          entradaStock: 0,
+          salidaStock: cantidad,
+          variacionCustodia: 0,
+          joyero: null,
+          entradaValor: 0,
+          salidaValor: valorAjuste,
+          variacionCustodiaValor: 0,
+        });
       }
 
       movimientos.sort((a, b) => new Date(a.fecha) - new Date(b.fecha));
@@ -279,6 +364,71 @@ export default {
         data: { deletedAt: new Date(), usu_actualizacion: user.codigo },
       });
       return true;
+    },
+
+    // ── NUEVO (ronda 36) — Ajustes de Inventario de Insumos (Mecanismo
+    // 2, acordado con el usuario). Solo para insumo que se pierde
+    // estando TODAVÍA en la bodega de Río Rayo — nunca llegó a manos de
+    // ningún joyero (eso se resuelve aparte, con el Mecanismo 1 de
+    // entrada+salida en registrarEntregaOrden). Requiere elegir el lote
+    // (compraInsumoId) porque cada gramo/unidad disponible vive en un
+    // lote específico con su propio costo real. Solo soporta "PERDIDA"
+    // por ahora — el usuario no pidió "HALLAZGO" para insumos.
+    crearAjusteInsumo: async (_, { input }, { prisma, user }) => {
+      requireAuth(user);
+      const {
+        empresaId,
+        piedraId,
+        compraInsumoId,
+        tipoMovimiento,
+        cantidad,
+        motivo,
+      } = input;
+      validarEmpresa(empresaId, user.empresaActualId);
+      if (tipoMovimiento !== "PERDIDA") {
+        throw new Error(
+          "Tipo de movimiento inválido — hoy solo se soporta 'PERDIDA' para insumos",
+        );
+      }
+      if (!motivo?.trim()) throw new Error("El motivo es obligatorio");
+      if (Number(cantidad) <= 0)
+        throw new Error("La cantidad debe ser mayor a 0");
+
+      const compra = await prisma.compraInsumo.findUnique({
+        where: { id: Number(compraInsumoId) },
+        include: { compra: true },
+      });
+      if (!compra) throw new Error("El lote no existe");
+      validarEmpresa(compra.compra.empresaId, user.empresaActualId);
+      if (compra.piedraId !== Number(piedraId)) {
+        throw new Error("Ese lote no corresponde a este insumo");
+      }
+      if (Number(compra.cantidadDisponible) < Number(cantidad)) {
+        throw new Error(
+          `No puede registrar una pérdida mayor a la cantidad disponible de ese lote. Disponible: ${compra.cantidadDisponible}`,
+        );
+      }
+
+      const numero = await generarNumeroAjusteInsumo(prisma, Number(empresaId));
+
+      return prisma.$transaction(async (tx) => {
+        await tx.compraInsumo.update({
+          where: { id: Number(compraInsumoId) },
+          data: { cantidadDisponible: { decrement: Number(cantidad) } },
+        });
+        return tx.ajusteInsumo.create({
+          data: {
+            empresaId: Number(empresaId),
+            piedraId: Number(piedraId),
+            compraInsumoId: Number(compraInsumoId),
+            numero,
+            tipoMovimiento,
+            cantidad: Number(cantidad),
+            motivo: motivo.trim(),
+            usu_creacion: user.codigo,
+          },
+        });
+      });
     },
   },
 };

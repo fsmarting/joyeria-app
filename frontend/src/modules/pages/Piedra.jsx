@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
-import { useQuery } from "@apollo/client";
+import { useQuery, useMutation } from "@apollo/client";
+import { toast } from "react-toastify";
 import EntidadGenerica from "../../components/EntidadGenerica.jsx";
 import { camposPiedra } from "../../data/camposPiedra.jsx";
 import {
@@ -8,7 +9,9 @@ import {
   ACTUALIZAR_PIEDRA,
   ELIMINAR_PIEDRA,
   GET_MOVIMIENTOS_INVENTARIO_PIEDRA,
+  CREAR_AJUSTE_INSUMO,
 } from "../../graphql/piedraQueries.js";
+import { GET_COMPRAS_POR_PIEDRA } from "../../graphql/compraInsumoQueries.js";
 
 const fmtQ = (n, u = "", maxDigits = 4) =>
   n != null
@@ -152,15 +155,72 @@ function calcularKardexInsumo(movimientos, saldoActualHoy, valorActualHoy) {
   return filas;
 }
 
-function MovimientosInventarioInsumoPanel({ piedra }) {
+function MovimientosInventarioInsumoPanel({ piedra, refetch }) {
   const [verDetalle, setVerDetalle] = useState(false);
   const unidad = piedra.unidad?.nombre || "";
+
+  // ── NUEVO (ronda 36) — Ajustes de Inventario de Insumos (Mecanismo 2).
+  // Mismo patrón que "+ Registrar ajuste" en Producto.jsx, con una
+  // diferencia real: aquí es obligatorio elegir el LOTE (compraInsumoId)
+  // porque cada lote de un insumo tiene su propio costo y disponibilidad
+  // — no existe un "stock único" como en Producto. Solo soporta "Pérdida
+  // en bodega" (ver crearAjusteInsumo en el backend): no se ofrece
+  // "Hallazgo" porque el usuario no lo pidió para insumos y no habría un
+  // lote/costo claro al cual atribuir un insumo encontrado.
+  const [ajustando, setAjustando] = useState(false);
+  const [loteAjuste, setLoteAjuste] = useState("");
+  const [cantidadAjuste, setCantidadAjuste] = useState("");
+  const [motivoAjuste, setMotivoAjuste] = useState("");
 
   const { data } = useQuery(GET_MOVIMIENTOS_INVENTARIO_PIEDRA, {
     variables: { piedraId: piedra.id },
     fetchPolicy: "network-only",
   });
   const movimientos = data?.movimientosInventarioPiedra || [];
+
+  const { data: lotesData, refetch: refetchLotes } = useQuery(
+    GET_COMPRAS_POR_PIEDRA,
+    {
+      variables: { piedraId: piedra.id },
+      fetchPolicy: "network-only",
+      skip: !ajustando,
+    },
+  );
+  const lotes = (lotesData?.comprasPorPiedra || []).filter(
+    (l) => Number(l.cantidadDisponible) > 0,
+  );
+  const [crearAjusteInsumo] = useMutation(CREAR_AJUSTE_INSUMO);
+
+  const handleAjuste = async () => {
+    if (!loteAjuste)
+      return toast.warning("Seleccione el lote donde ocurrió la pérdida");
+    if (!cantidadAjuste || Number(cantidadAjuste) <= 0)
+      return toast.warning("Ingrese una cantidad válida");
+    if (!motivoAjuste.trim()) return toast.warning("El motivo es obligatorio");
+    try {
+      await crearAjusteInsumo({
+        variables: {
+          input: {
+            empresaId: piedra.empresaId,
+            piedraId: piedra.id,
+            compraInsumoId: Number(loteAjuste),
+            tipoMovimiento: "PERDIDA",
+            cantidad: Number(cantidadAjuste),
+            motivo: motivoAjuste.trim(),
+          },
+        },
+      });
+      toast.success("Ajuste registrado");
+      setAjustando(false);
+      setLoteAjuste("");
+      setCantidadAjuste("");
+      setMotivoAjuste("");
+      await refetchLotes();
+      if (refetch) await refetch();
+    } catch (e) {
+      toast.error(e.message);
+    }
+  };
 
   const kardex = useMemo(
     () =>
@@ -204,9 +264,77 @@ function MovimientosInventarioInsumoPanel({ piedra }) {
 
   return (
     <div className="border rounded p-3 bg-white mt-3" style={{ fontSize: 12 }}>
-      <div className="fw-bold mb-2" style={{ fontSize: 13 }}>
-        📊 Movimientos de inventario
+      <div className="d-flex justify-content-between align-items-center mb-2">
+        <div className="fw-bold" style={{ fontSize: 13 }}>
+          📊 Movimientos de inventario
+        </div>
+        <button
+          className="btn btn-outline-danger btn-sm"
+          onClick={() => setAjustando(!ajustando)}
+        >
+          {ajustando ? "Cancelar" : "+ Registrar ajuste"}
+        </button>
       </div>
+
+      {ajustando && (
+        <div className="border border-danger rounded p-2 mb-3 bg-light">
+          <div className="text-muted mb-2" style={{ fontSize: 11 }}>
+            Pérdida en bodega — insumo que nunca llegó a manos de ningún joyero
+            (no confundir con lo que se pierde estando ya en poder de un joyero;
+            eso se resuelve aparte).
+          </div>
+          <div className="d-flex flex-wrap gap-2 align-items-end">
+            <div>
+              <label className="form-label mb-0">Lote</label>
+              <select
+                className="form-select form-select-sm"
+                style={{ width: 220 }}
+                value={loteAjuste}
+                onChange={(e) => setLoteAjuste(e.target.value)}
+              >
+                <option value="">Seleccione…</option>
+                {lotes.map((l) => (
+                  <option key={l.id} value={l.id}>
+                    {l.compra?.numero} —{" "}
+                    {l.compra?.fecha
+                      ? new Date(l.compra.fecha).toLocaleDateString("es-CO")
+                      : ""}{" "}
+                    (disp:{" "}
+                    {Number(l.cantidadDisponible).toLocaleString("es-CO", {
+                      maximumFractionDigits: 4,
+                    })}{" "}
+                    {unidad})
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="form-label mb-0">Cantidad</label>
+              <input
+                type="number"
+                className="form-control form-control-sm"
+                style={{ width: 90 }}
+                min="0"
+                value={cantidadAjuste}
+                onChange={(e) => setCantidadAjuste(e.target.value)}
+              />
+            </div>
+            <div style={{ flex: 1, minWidth: 220 }}>
+              <label className="form-label mb-0">Motivo (obligatorio)</label>
+              <input
+                type="text"
+                className="form-control form-control-sm"
+                placeholder="Ej: se extravió en bodega durante inventario"
+                value={motivoAjuste}
+                onChange={(e) => setMotivoAjuste(e.target.value)}
+              />
+            </div>
+            <button className="btn btn-danger btn-sm" onClick={handleAjuste}>
+              Guardar ajuste
+            </button>
+          </div>
+        </div>
+      )}
 
       {kardex.length === 0 ? (
         <div className="text-muted">Sin movimientos registrados todavía.</div>
@@ -369,8 +497,8 @@ export default function Piedra() {
         ELIMINAR: ELIMINAR_PIEDRA,
       }}
       fixedValues={valoresFijos}
-      getDetalle={(piedra) => (
-        <MovimientosInventarioInsumoPanel piedra={piedra} />
+      getDetalle={(piedra, refetch) => (
+        <MovimientosInventarioInsumoPanel piedra={piedra} refetch={refetch} />
       )}
     />
   );

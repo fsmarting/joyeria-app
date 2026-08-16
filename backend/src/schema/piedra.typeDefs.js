@@ -66,6 +66,37 @@ export default /* GraphQL */ `
     variacionCustodiaValor: Float!
   }
 
+  # ── NUEVO (ronda 36) — Ajustes de Inventario de Insumos (Mecanismo 2).
+  # Mismo patrón que AjusteInventario en producto.typeDefs.js, pero para
+  # insumo perdido estando todavía en la bodega de Río Rayo — nunca
+  # llegó a manos de ningún joyero. Solo soporta "PERDIDA" por ahora.
+  type AjusteInsumo {
+    id: Int!
+    empresaId: Int!
+    piedraId: Int!
+    compraInsumoId: Int!
+    numero: String!
+    tipoMovimiento: String!
+    cantidad: Float!
+    motivo: String!
+    fecha: String!
+    version: Int!
+  }
+
+  # ── NUEVO (ronda 36) — input para crearAjusteInsumo (Mecanismo 2).
+  # Mismo patrón que AjusteInventarioInput en producto.typeDefs.js, con
+  # compraInsumoId adicional porque aquí el lote SÍ es obligatorio elegirlo
+  # (no hay un "stock único" como en Producto — cada lote tiene su propio
+  # costo real).
+  input AjusteInsumoInput {
+    empresaId: Int!
+    piedraId: Int!
+    compraInsumoId: Int!
+    tipoMovimiento: String!
+    cantidad: Float!
+    motivo: String!
+  }
+
   input PiedraInput {
     empresaId: Int!
     codigo: String!
@@ -107,5 +138,7 @@ export default /* GraphQL */ `
     crearPiedra(input: PiedraInput!): Piedra
     actualizarPiedra(input: PiedraUpdateInput!): Piedra!
     eliminarPiedra(id: Int!): Boolean!
+    # ── NUEVO (ronda 36) — Ajustes de Inventario de Insumos (Mecanismo 2).
+    crearAjusteInsumo(input: AjusteInsumoInput!): AjusteInsumo!
   }
 `;

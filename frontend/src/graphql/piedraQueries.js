@@ -18,6 +18,7 @@ export const GET_PIEDRAS_CURSOR = gql`
       edges {
         node {
           id
+          empresaId
           codigo
           nombre
           costoEstandardPorUnidad
@@ -86,6 +87,21 @@ export const GET_MOVIMIENTOS_INVENTARIO_PIEDRA = gql`
       entradaValor
       salidaValor
       variacionCustodiaValor
+    }
+  }
+`;
+
+// ── NUEVO (ronda 36) — Ajustes de Inventario de Insumos (Mecanismo 2),
+// mismo patrón que CREAR_AJUSTE_INVENTARIO en productoQueries.js.
+export const CREAR_AJUSTE_INSUMO = gql`
+  mutation CrearAjusteInsumo($input: AjusteInsumoInput!) {
+    crearAjusteInsumo(input: $input) {
+      id
+      numero
+      tipoMovimiento
+      cantidad
+      motivo
+      fecha
     }
   }
 `;

@@ -22,7 +22,11 @@ export default /* GraphQL */ `
     id: Int!
     detalleOrdenProduccionId: Int!
     compraInsumoId: Int!
-    tipoMovimiento: String! # INICIAL | ADICIONAL | DEVOLUCION
+    # ── CAMBIO (ronda 36) — se agregan ENTRADA_CONSUMO/SALIDA_CONSUMO,
+    # generados automáticamente por registrarEntregaOrden (Mecanismo 1,
+    # nunca elegidos a mano por el usuario, a diferencia de ADICIONAL/
+    # DEVOLUCION que sí vienen del formulario "+ Mov.").
+    tipoMovimiento: String! # INICIAL | ADICIONAL | DEVOLUCION | ENTRADA_CONSUMO | SALIDA_CONSUMO
     cantidad: Float!
     valor: Float!
     fecha: String!
@@ -47,9 +51,16 @@ export default /* GraphQL */ `
     valorEnviado: Float!
     cantidadDevuelta: Float!
     valorDevuelto: Float!
+    # ── NUEVO (ronda 36) — cuánto de lo enviado ya se dio por consumido
+    # (convertido en producto terminado), actualizado en cada entrega.
+    # Ver Mecanismo 1 en el resolver de registrarEntregaOrden.
+    cantidadConsumida: Float!
+    valorConsumido: Float!
     version: Int!
     compraInsumo: CompraInsumo
     piedra: Piedra
+    # ── CAMBIO (ronda 36) — ahora es cantidadEnviada − cantidadDevuelta
+    # − cantidadConsumida (antes no restaba lo consumido).
     merma: Float
     movimientos: [MovimientoInsumoOrden!]!
     # ── NUEVO — conciliación teórica (solo lectura, Manual v5 §6.6) ─
@@ -230,20 +241,30 @@ export default /* GraphQL */ `
     # registrado como un movimiento DEVOLUCION más, no se reescribe el
     # historial). motivo es obligatorio — queda en la nota de la orden
     # y en la nota de cada devolución automática.
-    cancelarOrdenProduccion(id: Int!, version: Int!, motivo: String!): OrdenProduccion!
+    cancelarOrdenProduccion(
+      id: Int!
+      version: Int!
+      motivo: String!
+    ): OrdenProduccion!
     # ── NUEVO ─────────────────────────────────────────────────────
     # Cierra una orden que ya tiene piezas entregadas pero las
     # restantes no van a llegar (ej. problema de calidad del material
     # de la última pieza). No cambia cantidadProgramada ni
     # cantidadEntregada — solo pasa el estado a "Entregada" para
     # cerrar el ciclo, dejando la diferencia visible como historia.
-    cerrarOrdenProduccion(id: Int!, version: Int!, motivo: String!): OrdenProduccion!
+    cerrarOrdenProduccion(
+      id: Int!
+      version: Int!
+      motivo: String!
+    ): OrdenProduccion!
     registrarEntregaOrden(input: EntregaOrdenInput!): OrdenProduccion!
     conciliarEntrega(input: ConciliarEntregaInput!): EntregaOrden!
     agregarDetalleOrden(input: DetalleOrdenInput!): DetalleOrdenProduccion!
     # ── NUEVO — confirma varios insumos del BOM en un solo envío físico,
     # bajo UNA sola remisión (ver AgregarDetallesLoteInput arriba).
-    agregarDetallesOrdenLote(input: AgregarDetallesLoteInput!): [DetalleOrdenProduccion!]!
+    agregarDetallesOrdenLote(
+      input: AgregarDetallesLoteInput!
+    ): [DetalleOrdenProduccion!]!
     registrarMovimientoInsumo(
       input: MovimientoInsumoInput!
     ): DetalleOrdenProduccion!

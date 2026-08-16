@@ -1,4 +1,4 @@
-import { gql } from '@apollo/client';
+import { gql } from "@apollo/client";
 
 // ── CAMBIO — CompraInsumo ya no trae numero/fecha propios: ahora viven
 // en su cabeza Compra (ver conversación "deber ser" sobre separar
@@ -13,6 +13,7 @@ const DETALLE_FIELDS = `
   id ordenProduccionId compraInsumoId piedraId
   cantidad costoUnitario costoTotal desperdicio
   cantidadEnviada valorEnviado cantidadDevuelta valorDevuelto merma version
+  cantidadConsumida valorConsumido
   consumoTeorico enviadoNeto diferenciaVsTeorico
   piedra       { id codigo nombre unidad { nombre } tipo { id codigo nombre } }
   compraInsumo { id costoUnitario cantidadDisponible compra { numero fecha }
@@ -71,15 +72,36 @@ export const GET_ORDENES_CURSOR = gql`
 export const GET_HISTORICO_COSTO_ORDENES = gql`
   query HistoricoCostoOrdenes($productoId: Int!, $limit: Int) {
     historicoCostoOrdenes(productoId: $productoId, limit: $limit) {
-      id numero fechaEnvio cantidadProgramada cantidadEntregada
-      costoUnitarioEstandard costoTotalEstandard
+      id
+      numero
+      fechaEnvio
+      cantidadProgramada
+      cantidadEntregada
+      costoUnitarioEstandard
+      costoTotalEstandard
     }
   }
 `;
 
-export const CREAR_ORDEN      = gql`mutation CrearOrdenProduccion($input: OrdenProduccionInput!) { crearOrdenProduccion(input: $input) { id } }`;
-export const ACTUALIZAR_ORDEN = gql`mutation ActualizarOrdenProduccion($input: OrdenProduccionUpdateInput!) { actualizarOrdenProduccion(input: $input) { id } }`;
-export const ELIMINAR_ORDEN   = gql`mutation EliminarOrdenProduccion($id: Int!) { eliminarOrdenProduccion(id: $id) }`;
+export const CREAR_ORDEN = gql`
+  mutation CrearOrdenProduccion($input: OrdenProduccionInput!) {
+    crearOrdenProduccion(input: $input) {
+      id
+    }
+  }
+`;
+export const ACTUALIZAR_ORDEN = gql`
+  mutation ActualizarOrdenProduccion($input: OrdenProduccionUpdateInput!) {
+    actualizarOrdenProduccion(input: $input) {
+      id
+    }
+  }
+`;
+export const ELIMINAR_ORDEN = gql`
+  mutation EliminarOrdenProduccion($id: Int!) {
+    eliminarOrdenProduccion(id: $id)
+  }
+`;
 
 // ── NUEVO — cancelar orden (reemplaza el cambio manual de estadoId a
 // "Cancelada" desde el formulario genérico). Ver ordenProduccion.resolvers.js.
@@ -101,15 +123,36 @@ export const CERRAR_ORDEN = gql`
 export const REGISTRAR_ENTREGA = gql`
   mutation RegistrarEntregaOrden($input: EntregaOrdenInput!) {
     registrarEntregaOrden(input: $input) {
-      id cantidadEntregada valorEntregado fechaEntrega
-      entregas { id numeroRemision numeroJoyero fecha cantidad cantidadJoyero valorEntregado estadoConciliacion notaConciliacion nota usu_creacion version }
+      id
+      cantidadEntregada
+      valorEntregado
+      fechaEntrega
+      entregas {
+        id
+        numeroRemision
+        numeroJoyero
+        fecha
+        cantidad
+        cantidadJoyero
+        valorEntregado
+        estadoConciliacion
+        notaConciliacion
+        nota
+        usu_creacion
+        version
+      }
     }
   }
 `;
 
 export const CONCILIAR_ENTREGA = gql`
   mutation ConciliarEntrega($input: ConciliarEntregaInput!) {
-    conciliarEntrega(input: $input) { id estadoConciliacion notaConciliacion version }
+    conciliarEntrega(input: $input) {
+      id
+      estadoConciliacion
+      notaConciliacion
+      version
+    }
   }
 `;
 
@@ -128,4 +171,8 @@ export const AGREGAR_DETALLES_LOTE = gql`
 // y devolución (tipoMovimiento: "DEVOLUCION").
 export const REGISTRAR_MOVIMIENTO_INSUMO = gql`mutation RegistrarMovimientoInsumo($input: MovimientoInsumoInput!) { registrarMovimientoInsumo(input: $input) { ${DETALLE_FIELDS} } }`;
 
-export const ELIMINAR_DETALLE = gql`mutation EliminarDetalleOrden($id: Int!) { eliminarDetalleOrden(id: $id) }`;
+export const ELIMINAR_DETALLE = gql`
+  mutation EliminarDetalleOrden($id: Int!) {
+    eliminarDetalleOrden(id: $id)
+  }
+`;
