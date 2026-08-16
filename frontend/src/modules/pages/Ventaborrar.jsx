@@ -5,7 +5,7 @@ import EntidadGenerica from '../../components/EntidadGenerica.jsx';
 import { camposVenta }  from '../../data/camposVenta.jsx';
 import {
   GET_VENTAS_CURSOR, CREAR_VENTA, ACTUALIZAR_VENTA, ELIMINAR_VENTA,
-  ANULAR_VENTA, GUARDAR_REPARTO, OBTENER_SOCIOS,
+  GUARDAR_REPARTO, OBTENER_SOCIOS,
 } from '../../graphql/ventaQueries.js';
 
 const fmt = (n) => n != null ? `$${Number(n).toLocaleString('es-CO', { minimumFractionDigits: 0 })}` : '-';
@@ -27,9 +27,7 @@ function RepartoPanel({ venta, refetch }) {
   const [guardar] = useMutation(GUARDAR_REPARTO);
 
   const totalPct   = repartos.reduce((s, r) => s + Number(r.porcentaje), 0);
-  // ── CAMBIO — el total de la venta ahora es precioVenta (unitario) × cantidad.
-  const totalVenta = Number(venta.precioVenta) * Number(venta.cantidad ?? 1);
-  const utilidad   = totalVenta - Number(venta.valorComision);
+  const utilidad   = Number(venta.precioVenta) - Number(venta.valorComision);
 
   const updatePct = (socioId, pct) => {
     setRepartos((prev) => prev.map((r) => r.socioId === socioId ? { ...r, porcentaje: Number(pct) } : r));
@@ -49,7 +47,7 @@ function RepartoPanel({ venta, refetch }) {
       <div className="d-flex align-items-center gap-3 mb-3 flex-wrap">
         <strong style={{ fontSize: 13 }}>Reparto de utilidad — {venta.cliente?.nombre}</strong>
         <span className="text-muted small">
-          Total: {fmt(totalVenta)} ({fmt(venta.precioVenta)} × {venta.cantidad ?? 1}) · Comisión {venta.vendedora?.nombre}: {fmt(venta.valorComision)} ({Number(venta.porcentajeComision).toFixed(1)}%) ·
+          PVP: {fmt(venta.precioVenta)} · Comisión {venta.vendedora?.nombre}: {fmt(venta.valorComision)} ({Number(venta.porcentajeComision).toFixed(1)}%) ·
           <strong> Utilidad a repartir: {fmt(utilidad)}</strong>
         </span>
       </div>
@@ -89,76 +87,6 @@ function RepartoPanel({ venta, refetch }) {
   );
 }
 
-// ── NUEVO — panel de anulación, mismo patrón que "Cerrar orden (entrega
-// parcial)" en Órdenes de Producción: acción dedicada + motivo obligatorio.
-function AnularVentaPanel({ venta, refetch }) {
-  const [anulando, setAnulando] = useState(false);
-  const [motivo, setMotivo] = useState('');
-  const [anular, { loading }] = useMutation(ANULAR_VENTA);
-
-  const handleAnular = async () => {
-    if (!motivo.trim()) return toast.warning('Indique el motivo de la anulación');
-    try {
-      await anular({ variables: { id: venta.id, version: venta.version, motivo: motivo.trim() } });
-      toast.success('Venta anulada — el stock fue restaurado');
-      setAnulando(false);
-      setMotivo('');
-      await refetch();
-    } catch (e) { toast.error(e.message); }
-  };
-
-  if (venta.estado?.codigo === 'ANUL') {
-    return (
-      <div className="alert alert-secondary py-2 mb-0" style={{ fontSize: 12 }}>
-        🚫 Esta venta está anulada.
-      </div>
-    );
-  }
-
-  if (!anulando) {
-    return (
-      <button className="btn btn-outline-danger btn-sm" onClick={() => setAnulando(true)}>
-        🚫 Anular venta
-      </button>
-    );
-  }
-
-  return (
-    <div className="border border-danger rounded p-3 bg-white" style={{ fontSize: 12 }}>
-      <div className="fw-bold mb-2 text-danger">Anular venta</div>
-      <p className="text-muted mb-2" style={{ fontSize: 11 }}>
-        Se restaura automáticamente el stock del producto y se elimina el reparto de utilidad guardado.
-      </p>
-      <textarea
-        className="form-control form-control-sm mb-2"
-        placeholder="Motivo de la anulación (obligatorio)"
-        rows={2}
-        value={motivo}
-        onChange={(e) => setMotivo(e.target.value)}
-      />
-      <div className="d-flex gap-2">
-        <button className="btn btn-danger btn-sm" onClick={handleAnular} disabled={loading}>
-          {loading ? '⏳ Anulando...' : 'Confirmar anulación'}
-        </button>
-        <button className="btn btn-outline-secondary btn-sm" onClick={() => setAnulando(false)}>
-          Cancelar
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function VentaDetalle({ venta, refetch }) {
-  return (
-    <>
-      {venta.estado?.codigo !== 'ANUL' && <RepartoPanel venta={venta} refetch={refetch} />}
-      <div className="p-3 bg-light border-top">
-        <AnularVentaPanel venta={venta} refetch={refetch} />
-      </div>
-    </>
-  );
-}
-
 export default function Venta() {
   const empresaActual = useMemo(() => {
     try { return JSON.parse(localStorage.getItem('empresa') || '{}'); } catch { return {}; }
@@ -168,11 +96,11 @@ export default function Venta() {
     <EntidadGenerica
       tipoEntidad="venta" campos={camposVenta}
       titulo="Ventas"
-      descripcion="Registro de ventas — la comisión se calcula automáticamente según medio de pago y vendedora. Expanda para repartir utilidad entre socias o anular."
+      descripcion="Registro de ventas — la comisión se calcula automáticamente según medio de pago y vendedora. Expanda para repartir utilidad entre socias."
       textoBoton="Venta"
       queries={{ GET: GET_VENTAS_CURSOR, CREAR: CREAR_VENTA, ACTUALIZAR: ACTUALIZAR_VENTA, ELIMINAR: ELIMINAR_VENTA }}
       fixedValues={{ empresaId: empresaActual.id, fecha: new Date().toISOString().split('T')[0] }}
-      getDetalle={(venta, refetch) => <VentaDetalle venta={venta} refetch={refetch} />}
+      getDetalle={(venta, refetch) => <RepartoPanel venta={venta} refetch={refetch} />}
     />
   );
 }

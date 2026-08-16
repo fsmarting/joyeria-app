@@ -252,7 +252,9 @@ model Producto {
   categoria Grupo? @relation("Producto_Categoria", fields: [categoriaId], references: [id])
   piedras ProductoPiedra[] @relation("ProductoPiedra_Producto")
   ordenesProduccion OrdenProduccion[] @relation("OrdenProduccion_Producto")
-  ventas Venta[] @relation("Venta_Producto")
+  // ── CAMBIO (ronda 34) — antes apuntaba a Venta (la cabeza, cuando cada
+  // venta era 1 solo producto). Ahora apunta a VentaDetalle (la línea).
+  ventaDetalles VentaDetalle[] @relation("VentaDetalle_Producto")
   muestrarioItems MuestrarioItem[] @relation("MuestrarioItem_Producto")
   convsPiezasInteres ConversacionProducto[] @relation("ConversacionProducto_Prod")
   cotizacionItems CotizacionItem[] @relation("CotizacionItem_Producto")
@@ -430,27 +432,27 @@ model MovimientoInsumoOrden {
   @@index([compraInsumoId])
 }
 
+// ── CAMBIO (ronda 34) — Venta se partió en cabeza (Venta) + detalle
+// (VentaDetalle), mismo patrón que Compra/CompraInsumo: antes cada fila
+// de Venta mezclaba datos de la transacción (cliente, vendedora, medio de
+// pago, comisión) con datos de UN producto vendido, forzando "1 solo SKU
+// por venta". Ahora la cabeza tiene los datos de la transacción y
+// `numero` (autogenerado, VTA-{año}-{consecutivo}, igual patrón que
+// Muestrario) y el detalle tiene línea por línea qué se vendió — una
+// venta puede tener varios productos. porcentajeComision se sigue
+// guardando en la cabeza (depende de vendedora + medio de pago, iguales
+// para toda la venta); valorComision/totalItems/valorTotal se calculan
+// a partir de las líneas (igual que Compra.valorTotal), no se guardan.
 model Venta {
   id Int @id @default(autoincrement())
   empresaId Int
+  numero String @db.VarChar(20)
   clienteId Int
-  productoId Int
   vendedoraId Int?
-  muestrarioItemId Int?
-  // ── CAMBIO — antes apuntaba a Cotizacion (la cabeza). Ahora apunta a
-  // CotizacionItem (la línea), igual que ya se hacía con muestrarioItemId.
-  // Esto es lo que permite convertir cotizaciones con varios productos.
-  cotizacionItemId Int?
-  // ── NUEVO — antes cada fila de Venta representaba siempre 1 unidad.
-  // precioVenta pasa a ser el precio POR UNIDAD; el total de la venta
-  // es precioVenta * cantidad.
-  cantidad Int @default(1)
-  fecha DateTime @default(now())
-  precioVenta Decimal @db.Decimal(12,2)
-  medioPagoId Int
-  porcentajeComision Decimal @db.Decimal(5,2)
-  valorComision Decimal @db.Decimal(12,2)
   canalId Int?
+  medioPagoId Int
+  fecha DateTime @default(now())
+  porcentajeComision Decimal @db.Decimal(5,2)
   estadoId Int
   fec_creacion DateTime @default(now())
   usu_creacion String?
@@ -460,17 +462,39 @@ model Venta {
   deletedAt DateTime?
   empresa Empresa @relation("Venta_empresa", fields: [empresaId], references: [id])
   cliente Tercero @relation("Venta_Cliente", fields: [clienteId], references: [id])
-  producto Producto @relation("Venta_Producto", fields: [productoId], references: [id])
   vendedora Usuario? @relation("Venta_Vendedora", fields: [vendedoraId], references: [id])
   medioPago Grupo @relation("Venta_MedioPago", fields: [medioPagoId], references: [id])
   estado Grupo @relation("Venta_Estado", fields: [estadoId], references: [id])
-  repartos RepartoUtilidad[] @relation("RepartoUtilidad_Venta")
   canal   Grupo? @relation("Venta_Canal", fields: [canalId], references: [id])
-  muestrarioItem MuestrarioItem? @relation("Venta_MuestrarioItem", fields: [muestrarioItemId], references: [id])
-  cotizacionItem CotizacionItem? @relation("Venta_CotizacionItem", fields: [cotizacionItemId], references: [id])
+  repartos RepartoUtilidad[] @relation("RepartoUtilidad_Venta")
+  items VentaDetalle[] @relation("VentaDetalle_Venta")
 
   @@index([empresaId, fecha])
   @@index([clienteId])
+}
+
+model VentaDetalle {
+  id Int @id @default(autoincrement())
+  ventaId Int
+  productoId Int
+  // Solo llenos cuando la línea viene de vender un ítem de muestrario o de
+  // convertir una línea de cotización — null en venta directa. Antes
+  // vivían en la propia Venta; bajan aquí porque el origen es por
+  // producto vendido, no por transacción completa.
+  muestrarioItemId Int?
+  cotizacionItemId Int?
+  cantidad Int @default(1)
+  precioVenta Decimal @db.Decimal(12,2)
+  subtotal Decimal @db.Decimal(12,2)
+  version Int @default(1)
+  deletedAt DateTime?
+  venta Venta @relation("VentaDetalle_Venta", fields: [ventaId], references: [id], onDelete: Cascade)
+  producto Producto @relation("VentaDetalle_Producto", fields: [productoId], references: [id])
+  muestrarioItem MuestrarioItem? @relation("VentaDetalle_MuestrarioItem", fields: [muestrarioItemId], references: [id])
+  cotizacionItem CotizacionItem? @relation("VentaDetalle_CotizacionItem", fields: [cotizacionItemId], references: [id])
+
+  @@index([ventaId])
+  @@index([productoId])
 }
 
 model RepartoUtilidad {
@@ -607,7 +631,10 @@ model MuestrarioItem {
   deletedAt DateTime?
   muestrario Muestrario @relation("MuestrarioItem_Muestrario", fields: [muestrarioId], references: [id], onDelete: Cascade)
   producto Producto @relation("MuestrarioItem_Producto", fields: [productoId], references: [id])
-  ventas Venta[] @relation("Venta_MuestrarioItem")
+  // ── CAMBIO (ronda 34) — antes apuntaba a Venta (la cabeza). Ahora
+  // apunta a VentaDetalle (la línea) — ver conversación sobre separar
+  // cabeza/detalle en Ventas.
+  ventaDetalles VentaDetalle[] @relation("VentaDetalle_MuestrarioItem")
   @@index([muestrarioId])
 }
 
@@ -678,9 +705,9 @@ model CotizacionItem {
 
   cotizacion Cotizacion @relation("CotizacionItem_Cotizacion", fields: [cotizacionId], references: [id], onDelete: Cascade)
   producto   Producto   @relation("CotizacionItem_Producto",   fields: [productoId],   references: [id])
-  // ── NUEVO — antes Venta apuntaba a Cotizacion (la cabeza); ahora apunta
-  // a la línea específica que se vendió.
-  ventas     Venta[]    @relation("Venta_CotizacionItem")
+  // ── CAMBIO (ronda 34) — antes apuntaba a Venta (la cabeza, cuando cada
+  // venta era 1 solo producto). Ahora apunta a VentaDetalle (la línea).
+  ventaDetalles VentaDetalle[] @relation("VentaDetalle_CotizacionItem")
 
   @@index([cotizacionId])
 }
