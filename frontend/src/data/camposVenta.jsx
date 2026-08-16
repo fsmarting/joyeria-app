@@ -1,21 +1,37 @@
 import { GET_GRUPOS_POR_CODIGOS } from "../graphql/grupoQueries.js";
 import { OBTENER_TERCEROS_POR_TIPO } from "../graphql/terceroQueries.js";
 import { OBTENER_USUARIOS } from "../graphql/ventaQueries.js";
-import { GET_PRODUCTOS_CURSOR } from "../graphql/productoQueries.js";
 
 const fmt = (n) =>
   n != null
     ? `$${Number(n).toLocaleString("es-CO", { minimumFractionDigits: 0 })}`
     : "-";
 
+// ── CAMBIO (ronda 34) — campos de la CABEZA de una venta (numero
+// autogenerado/cliente/vendedora/canal/medio de pago/fecha). Los
+// productos (antes mezclados en esta misma fila: productoId/cantidad/
+// precioVenta/total) ahora se agregan desde el panel de detalle, igual
+// que los insumos de una Compra — ver Venta.jsx (VentaPanel).
 export const camposVenta = [
+  {
+    // ── NUEVO — número correlativo VTA-{año}-{consecutivo}, generado por
+    // el servidor. Mismo tratamiento que "numero" en camposMuestrario.
+    nombre: "numero",
+    etiqueta: "N° Venta",
+    tipoForm: "text",
+    maxLength: 20,
+    ancho: "120px",
+    ordenListado: 1,
+    ocultarEnCreacion: true,
+    readOnly: true,
+  },
   {
     nombre: "fecha",
     etiqueta: "Fecha",
     tipoForm: "date",
     obligatorio: true,
     ancho: "100px",
-    ordenListado: 1,
+    ordenListado: 2,
     valorDefecto: new Date().toISOString().split("T")[0],
     valueTransformer: (v) => {
       if (!v) return "";
@@ -36,7 +52,7 @@ export const camposVenta = [
     tipoForm: "select",
     obligatorio: true,
     ancho: "160px",
-    ordenListado: 2,
+    ordenListado: 3,
     relationConfig: {
       query: OBTENER_TERCEROS_POR_TIPO,
       dataKey: "obtenerTercerosPorTipo",
@@ -47,76 +63,11 @@ export const camposVenta = [
     render: (f) => f.cliente?.nombre ?? "-",
   },
   {
-    nombre: "productoId",
-    etiqueta: "Producto",
-    tipoForm: "select",
-    obligatorio: true,
-    ancho: "160px",
-    ordenListado: 3,
-    relationConfig: {
-      query: GET_PRODUCTOS_CURSOR,
-      dataKey: "productosFiltradosCursor",
-      isEdge: true,
-      valueField: "id",
-      displayField: "nombre",
-      fixedVariables: { first: 100 },
-      // ── NUEVO — al seleccionar el producto, autocompleta precioVenta
-      // con el precio sugerido del producto (queda editable después).
-      // Mismo criterio que ya se usa en Muestrario/Cotización, ahora
-      // también en Venta Directa.
-      rellenarCampos: { precioVenta: "precioVenta" },
-    },
-    render: (f) =>
-      f.producto ? `${f.producto.referencia} — ${f.producto.nombre}` : "-",
-  },
-  {
-    // ── NUEVO — antes cada venta era siempre 1 unidad (implícito, sin
-    // campo). Ahora es un valor real y precioVenta pasa a ser el precio
-    // POR UNIDAD.
-    nombre: "cantidad",
-    etiqueta: "Cantidad",
-    tipoForm: "number",
-    obligatorio: true,
-    ancho: "90px",
-    ordenListado: 4,
-    valorDefecto: 1,
-    render: (f) => f.cantidad ?? 1,
-  },
-  {
-    nombre: "precioVenta",
-    etiqueta: "Precio venta (unitario)",
-    tipoForm: "number",
-    obligatorio: true,
-    ancho: "140px",
-    ordenListado: 5,
-    valorDefecto: 0,
-    render: (f) => fmt(f.precioVenta),
-  },
-  {
-    // ── NUEVO — total = precioVenta (unitario) × cantidad. Ahora aparece
-    // también DENTRO del formulario (no solo en el listado), de solo
-    // lectura, y se recalcula en vivo si cambia Cantidad o Precio venta
-    // (ver el efecto nuevo en ModalGenericoAvanzado.jsx para tipoEntidad
-    // "venta"). Ya no es soloListado.
-    nombre: "total",
-    etiqueta: "Total",
-    tipoForm: "number",
-    readOnly: true,
-    ancho: "130px",
-    ordenListado: 6,
-    ordenable: false,
-    render: (f) => (
-      <strong className="text-success">
-        {fmt(Number(f.precioVenta ?? 0) * Number(f.cantidad ?? 1))}
-      </strong>
-    ),
-  },
-  {
     nombre: "canalId",
     etiqueta: "Canal llegada",
     tipoForm: "select",
     ancho: "120px",
-    ordenListado: 7,
+    ordenListado: 4,
     relationConfig: {
       query: GET_GRUPOS_POR_CODIGOS,
       dataKey: "gruposPorCodigos",
@@ -132,7 +83,7 @@ export const camposVenta = [
     tipoForm: "select",
     obligatorio: true,
     ancho: "120px",
-    ordenListado: 8,
+    ordenListado: 5,
     relationConfig: {
       query: GET_GRUPOS_POR_CODIGOS,
       dataKey: "gruposPorCodigos",
@@ -147,7 +98,7 @@ export const camposVenta = [
     etiqueta: "Vendedora",
     tipoForm: "select",
     ancho: "140px",
-    ordenListado: 9,
+    ordenListado: 6,
     relationConfig: {
       query: OBTENER_USUARIOS,
       dataKey: "obtenerUsuarios",
@@ -157,15 +108,34 @@ export const camposVenta = [
     render: (f) => f.vendedora?.nombre ?? "-",
   },
   {
-    // ── CAMBIO — antes se elegía manualmente al crear la venta (única de
-    // las 3 formas que lo pedía). Ahora lo calcula el servidor según medio
-    // de pago (igual que muestrario y cotización), y solo cambia por medio
-    // de "✓ Confirmar pago" o "🚫 Anular venta". Por eso sale del formulario.
+    // ── NUEVO — antes solo había 1 producto por venta. Ahora la cantidad
+    // de líneas se ve aquí, igual que "N° Insumos" en camposCompra.
+    nombre: "totalItems",
+    etiqueta: "N° Productos",
+    soloListado: true,
+    ancho: "100px",
+    ordenListado: 7,
+    render: (f) => f.totalItems ?? 0,
+  },
+  {
+    // ── CAMBIO — antes "Total" era precioVenta × cantidad de una sola
+    // fila. Ahora es la suma de todas las líneas de la venta (calculado
+    // en el servidor, ver Venta.valorTotal).
+    nombre: "valorTotal",
+    etiqueta: "Valor Total",
+    soloListado: true,
+    ancho: "130px",
+    ordenListado: 8,
+    render: (f) => (
+      <strong className="text-success">{fmt(f.valorTotal)}</strong>
+    ),
+  },
+  {
     nombre: "estadoId",
     etiqueta: "Estado",
     soloListado: true,
     ancho: "120px",
-    ordenListado: 10,
+    ordenListado: 9,
     render: (f) => {
       const c =
         f.estado?.codigo === "CONF"
@@ -184,7 +154,7 @@ export const camposVenta = [
     etiqueta: "Origen",
     soloListado: true,
     ancho: "140px",
-    ordenListado: 11,
+    ordenListado: 10,
     ordenable: false,
     render: (f) => {
       const label = f.origenLabel ?? "🛍️ Directa";

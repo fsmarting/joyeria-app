@@ -461,24 +461,12 @@ export default function ModalGenericoAvanzado({
   }, [form.valorBruto, form.valorIva, form.valorRetencion, registroParaEditar]);
 
   // -------------------------------------------------------------------
-  // ── NUEVO — CALCULADORA AUTOMÁTICA DE TOTAL PARA VENTA ──
-  // Mismo patrón que el efecto de Facturas de arriba: cantidad ×
-  // precioVenta (unitario) = total. Se muestra de solo lectura en el
-  // formulario (campo "total" con readOnly:true en camposVenta.jsx) y
-  // se recalcula en vivo si cambia Cantidad o Precio venta. "total" no
-  // se envía al backend — buildInput.js no lo incluye en ALLOWED_INPUT.
+  // ── ELIMINADO (ronda 34) — la calculadora automática de "total" para
+  // el formulario de Venta ya no aplica: Venta ahora es solo cabeza
+  // (cliente/vendedora/medio de pago/fecha), sin cantidad/precioVenta
+  // propios — esos campos viven ahora por línea en VentaPanel
+  // (Ventas.jsx), fuera de este modal genérico. Ver camposVenta.jsx.
   // -------------------------------------------------------------------
-  useEffect(() => {
-    if (tipoEntidad !== "venta") return;
-    const cantidad = parseFloat(form.cantidad) || 0;
-    const precioVenta = parseFloat(form.precioVenta) || 0;
-    const totalCalculado = cantidad * precioVenta;
-
-    setForm((prev) => {
-      if (prev.total === totalCalculado) return prev;
-      return { ...prev, total: totalCalculado };
-    });
-  }, [form.cantidad, form.precioVenta, tipoEntidad]);
 
   // -------------------------------------------------------------------
   // 4. MANEJO DE CAMBIOS

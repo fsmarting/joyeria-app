@@ -240,13 +240,23 @@ export default {
       }
 
       // 2. Ventas — directa / por cotización / desde muestrario
-      const ventas = await prisma.venta.findMany({
+      // ── CAMBIO (ronda 34) — Venta se partió en cabeza (Venta) + detalle
+      // (VentaDetalle): productoId/cantidad/muestrarioItemId/
+      // cotizacionItemId ahora viven en la línea, no en la venta. Se
+      // consulta VentaDetalle y se sube a `.venta` para fecha/estado —
+      // mismo ajuste que ya se hizo para CompraInsumo en piedra.resolvers.js.
+      const ventas = await prisma.ventaDetalle.findMany({
         where: {
           productoId: Number(productoId),
           deletedAt: null,
-          estado: { codigo: { not: "ANUL" } },
+          venta: {
+            empresaId: user.empresaActualId,
+            deletedAt: null,
+            estado: { codigo: { not: "ANUL" } },
+          },
         },
         include: {
+          venta: true,
           cotizacionItem: { include: { cotizacion: true } },
           muestrarioItem: {
             include: { muestrario: { include: { vendedora: true } } },
@@ -256,10 +266,9 @@ export default {
       for (const v of ventas) {
         if (v.muestrarioItemId) {
           movimientos.push({
-            fecha: v.fecha,
+            fecha: v.venta.fecha,
             tipo: "Venta desde muestrario",
-            referencia:
-              v.muestrarioItem?.muestrario?.numero || `Venta #${v.id}`,
+            referencia: v.muestrarioItem?.muestrario?.numero || v.venta.numero,
             cantidad: v.cantidad,
             entradaStock: 0,
             salidaStock: 0,
@@ -268,10 +277,9 @@ export default {
           });
         } else if (v.cotizacionItemId) {
           movimientos.push({
-            fecha: v.fecha,
+            fecha: v.venta.fecha,
             tipo: "Venta por cotización convertida",
-            referencia:
-              v.cotizacionItem?.cotizacion?.numero || `Venta #${v.id}`,
+            referencia: v.cotizacionItem?.cotizacion?.numero || v.venta.numero,
             cantidad: v.cantidad,
             entradaStock: 0,
             salidaStock: v.cantidad,
@@ -280,9 +288,9 @@ export default {
           });
         } else {
           movimientos.push({
-            fecha: v.fecha,
+            fecha: v.venta.fecha,
             tipo: "Venta directa",
-            referencia: `Venta #${v.id}`,
+            referencia: v.venta.numero,
             cantidad: v.cantidad,
             entradaStock: 0,
             salidaStock: v.cantidad,

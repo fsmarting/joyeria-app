@@ -9,7 +9,10 @@ export default /* GraphQL */ `
     cantidadDisponible: Int!
     version: Int!
     producto: Producto
-    ventas: [Venta!]!
+    # ── CAMBIO (ronda 34) — antes: [Venta!]! (cada venta era 1 solo
+    # producto). Ahora apunta a las líneas de detalle que vendieron este
+    # ítem — cada VentaDetalle trae su propia venta{} (cabeza) anidada.
+    ventaDetalles: [VentaDetalle!]!
   }
   type Muestrario {
     id: Int!

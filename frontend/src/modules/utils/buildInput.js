@@ -91,14 +91,7 @@ const ALLOWED_INPUT = {
   // de detalle de CompraInsumo.jsx, con sus propias mutations
   // (agregarItemCompra/actualizarItemCompra) — no pasan por buildInput,
   // mismo criterio que "muestrarioitem" (tampoco está en esta lista).
-  compra: [
-    "empresaId",
-    "numero",
-    "proveedorId",
-    "fecha",
-    "nota",
-    "version",
-  ],
+  compra: ["empresaId", "numero", "proveedorId", "fecha", "nota", "version"],
   ordenproduccion: [
     "empresaId",
     "numero",
@@ -114,19 +107,18 @@ const ALLOWED_INPUT = {
     "nota",
     "version",
   ],
-  // ── CAMBIO — estadoId sale de aquí: ya no viaja en VentaInput/
-  // VentaUpdateInput (el servidor lo calcula solo, o cambia por
-  // confirmarVentaEfectivo/anularVenta). cantidad es nuevo — antes cada
-  // venta era siempre 1 unidad implícita.
+  // ── CAMBIO (ronda 34) — Venta ahora es cabeza/detalle (mismo patrón
+  // que Compra/CompraInsumo): productoId/cantidad/precioVenta salen de
+  // aquí — se agregan con agregarItemVenta después de crear la cabeza.
+  // numero tampoco viaja: lo genera el servidor, igual que Muestrario.
+  // estadoId ya no viaja: el servidor lo calcula solo, o cambia por
+  // confirmarVentaEfectivo/anularVenta.
   venta: [
     "empresaId",
     "clienteId",
-    "productoId",
     "vendedoraId",
     "canalId",
-    "cantidad",
     "fecha",
-    "precioVenta",
     "medioPagoId",
     "version",
   ],
@@ -220,11 +212,7 @@ const NUMERIC_FIELDS = {
     "costoEstandardPorUnidad",
     "version",
   ],
-  compra: [
-    "empresaId",
-    "proveedorId",
-    "version",
-  ],
+  compra: ["empresaId", "proveedorId", "version"],
   ordenproduccion: [
     "empresaId",
     "productoId",
@@ -234,15 +222,14 @@ const NUMERIC_FIELDS = {
     "cantidadEntregada",
     "version",
   ],
+  // ── CAMBIO (ronda 34) — productoId/cantidad/precioVenta salen de aquí,
+  // ver comentario arriba en ALLOWED_INPUT.venta.
   venta: [
     "empresaId",
     "clienteId",
-    "productoId",
     "vendedoraId",
     "canalId",
     "medioPagoId",
-    "cantidad",
-    "precioVenta",
     "version",
   ],
   conversacion: [

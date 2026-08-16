@@ -313,46 +313,78 @@ export default {
           ? Number(ue?.comisionTarjeta ?? 0)
           : Number(ue?.comisionEfectivo ?? 0);
 
+      // ── CAMBIO (ronda 34) — Venta se partió en cabeza + detalle. "Fase 1"
+      // de la conversación sobre separar cabeza/detalle en Ventas: se
+      // mantiene el mismo comportamiento externo de siempre (una Venta por
+      // cada línea de la cotización) — cada Venta ahora tiene 1 sola
+      // VentaDetalle en vez de mezclar cabeza+detalle en una fila. La
+      // consolidación en una sola venta con varias líneas queda para una
+      // fase futura si hace falta.
+      const anio = new Date().getFullYear();
+      const prefijo = `VTA-${anio}-`;
+
       return prisma.$transaction(async (tx) => {
         const ventas = [];
         for (const item of cotizacion.items) {
-          const valorComision =
-            (Number(item.precioUnitario) * Number(item.cantidad) * porcentaje) / 100;
+          const subtotal = Number(item.precioUnitario) * Number(item.cantidad);
+          const count = await tx.venta.count({
+            where: {
+              empresaId: cotizacion.empresaId,
+              numero: { startsWith: prefijo },
+            },
+          });
+          const numero = `${prefijo}${String(count + 1).padStart(4, "0")}`;
+
           const venta = await tx.venta.create({
             data: {
               empresaId: cotizacion.empresaId,
+              numero,
               clienteId: cotizacion.clienteId,
-              productoId: item.productoId,
               vendedoraId: cotizacion.vendedoraId ?? null,
+              fecha: fecha ? new Date(fecha) : new Date(),
+              medioPagoId: Number(medioPagoId),
+              porcentajeComision: porcentaje,
+              estadoId: estadoVenta.id,
+              usu_creacion: user.codigo,
+            },
+          });
+          await tx.ventaDetalle.create({
+            data: {
+              ventaId: venta.id,
+              productoId: item.productoId,
               // ── FIX (confirmado por el usuario) — antes no se guardaba
               // ningún vínculo con la cotización de origen. Ahora apunta a
               // la línea (item), no a la cabeza — así origenLabel y el
               // historial funcionan aunque haya varios productos.
               cotizacionItemId: item.id,
               cantidad: item.cantidad,
-              fecha: fecha ? new Date(fecha) : new Date(),
               precioVenta: item.precioUnitario,
-              medioPagoId: Number(medioPagoId),
-              porcentajeComision: porcentaje,
-              valorComision,
-              estadoId: estadoVenta.id,
+              subtotal,
               usu_creacion: user.codigo,
-            },
-            include: {
-              cliente: true,
-              producto: true,
-              vendedora: true,
-              medioPago: true,
-              estado: true,
-              repartos: true,
-              cotizacionItem: { include: { cotizacion: true } },
             },
           });
           await tx.producto.update({
             where: { id: item.productoId },
             data: { enStock: { decrement: item.cantidad } },
           });
-          ventas.push(venta);
+          ventas.push(
+            await tx.venta.findUnique({
+              where: { id: venta.id },
+              include: {
+                cliente: true,
+                vendedora: true,
+                medioPago: true,
+                estado: true,
+                repartos: true,
+                items: {
+                  include: {
+                    producto: true,
+                    cotizacionItem: { include: { cotizacion: true } },
+                  },
+                },
+              },
+            }),
+          );
         }
 
         const estadoConv = await prisma.grupo.findFirst({

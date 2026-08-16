@@ -400,7 +400,12 @@ function MuestrarioPanel({ muestrario, refetch }) {
             </div>
 
             {/* Ventas de este item */}
-            {(item.ventas || []).length > 0 && (
+            {/* ── CAMBIO (ronda 34) — antes: item.ventas (cada venta era 1
+            solo producto, cliente/medioPago/estado vivían ahí mismo).
+            Ahora: item.ventaDetalles (líneas), cliente/medioPago/estado
+            viven en la cabeza (v.venta{}); handleConfirmar recibe el id
+            de la CABEZA (v.venta.id), no el de la línea. */}
+            {(item.ventaDetalles || []).length > 0 && (
               <table
                 className="table table-sm mt-2 mb-0"
                 style={{ fontSize: 11 }}
@@ -416,25 +421,25 @@ function MuestrarioPanel({ muestrario, refetch }) {
                   </tr>
                 </thead>
                 <tbody>
-                  {item.ventas.map((v) => (
+                  {item.ventaDetalles.map((v) => (
                     <tr key={v.id}>
-                      <td>{v.cliente?.nombre}</td>
+                      <td>{v.venta?.cliente?.nombre}</td>
                       <td>{v.cantidad ?? 1}</td>
                       <td>{fmt(v.precioVenta)}</td>
-                      <td>{v.medioPago?.nombre}</td>
+                      <td>{v.venta?.medioPago?.nombre}</td>
                       <td>
                         <span
-                          className={`badge ${v.estado?.codigo === "CONF" ? "bg-success" : v.estado?.codigo === "ENPR" ? "bg-warning text-dark" : "bg-secondary"}`}
+                          className={`badge ${v.venta?.estado?.codigo === "CONF" ? "bg-success" : v.venta?.estado?.codigo === "ENPR" ? "bg-warning text-dark" : "bg-secondary"}`}
                         >
-                          {v.estado?.nombre}
+                          {v.venta?.estado?.nombre}
                         </span>
                       </td>
                       <td>
-                        {v.estado?.codigo === "ENPR" && activo && (
+                        {v.venta?.estado?.codigo === "ENPR" && activo && (
                           <button
                             className="btn btn-sm btn-outline-success py-0 px-1"
                             style={{ fontSize: 11 }}
-                            onClick={() => handleConfirmar(v.id)}
+                            onClick={() => handleConfirmar(v.venta.id)}
                           >
                             ✓ Confirmar pago
                           </button>

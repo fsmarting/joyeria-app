@@ -4,11 +4,17 @@ const ITEM_FIELDS = `
   id muestrarioId productoId
   cantidadEntregada cantidadDevuelta cantidadVendida cantidadDisponible version
   producto { id referencia nombre precioVenta foto enStock }
-  ventas {
-    id clienteId precioVenta cantidad version
-    cliente   { id nombre telefono }
-    medioPago { id codigo nombre }
-    estado    { id codigo nombre }
+  # ── CAMBIO (ronda 34) — antes: ventas { ... } (cada venta era 1 solo
+  # producto). Ahora apunta a las líneas de detalle que vendieron este
+  # ítem — cliente/medioPago/estado ahora viven en la cabeza (venta{}).
+  ventaDetalles {
+    id cantidad precioVenta version
+    venta {
+      id
+      cliente   { id nombre telefono }
+      medioPago { id codigo nombre }
+      estado    { id codigo nombre }
+    }
   }
 `;
 
