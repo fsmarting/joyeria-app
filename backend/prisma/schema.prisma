@@ -486,6 +486,10 @@ model VentaDetalle {
   cantidad Int @default(1)
   precioVenta Decimal @db.Decimal(12,2)
   subtotal Decimal @db.Decimal(12,2)
+  fec_creacion DateTime @default(now())
+  usu_creacion String?
+  fec_actualizacion DateTime @updatedAt
+  usu_actualizacion String?
   version Int @default(1)
   deletedAt DateTime?
   venta Venta @relation("VentaDetalle_Venta", fields: [ventaId], references: [id], onDelete: Cascade)
