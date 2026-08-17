@@ -310,7 +310,6 @@ export const camposGrupo = [
     readOnly: (form, original) =>
       original?.subcatalogo?.catalogo?.codigo === "ADMIN",
   },
-
   {
     nombre: "subcatalogoId",
     etiqueta: "SubCatálogo",
@@ -342,12 +341,28 @@ export const camposGrupo = [
     render: (f) => f.subcatalogo?.catalogo?.codigo ?? "-",
   },
   {
+    nombre: "subcatalogo.catalogo.nombre",
+    etiqueta: "Nombre Catálogo",
+    tipo: "texto",
+    ancho: "180px",
+    soloListado: true,
+    ordenListado: 3,
+  },
+  {
     nombre: "subcatalogo.codigo",
     etiqueta: "SubCatálogo",
     soloListado: true,
     ancho: "120px",
     ordenListado: 4,
     render: (f) => f.subcatalogo?.codigo ?? "-",
+  },
+  {
+    nombre: "subcatalogo.nombre",
+    etiqueta: "Nombre SubCatálogo",
+    tipo: "texto",
+    ancho: "180px",
+    soloListado: true,
+    ordenListado: 4,
   },
   {
     nombre: "codigo",

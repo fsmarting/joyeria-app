@@ -60,7 +60,18 @@ export default {
       const orderByClause =
         orden.length > 0
           ? orden.map((c, i) => ({ [c]: direccion[i] || "asc" }))
-          : [{ codigo: "asc" }];
+          : [
+              {
+                subcatalogo: {
+                  catalogo: { codigo: "asc" },
+                },
+              },
+              { subcatalogoId: "asc" },
+              { codigo: "asc" },
+            ];
+
+      console.log("Order by grupo", orderByClause);
+      console.log("orden...", orden);
 
       const items = await prisma.grupo.findMany({
         where,
