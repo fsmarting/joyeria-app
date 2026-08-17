@@ -533,13 +533,16 @@ export default {
         // flujo NORMAL (piezas que sí se entregaron) — qué pasa con
         // insumo enviado que NUNCA se convierte en pieza (orden cerrada
         // con faltante) queda fuera de este cambio, a propósito.
+        // 🩹 FIX (ronda 37) — `d.cantidad` es la cantidad POR PIEZA del
+        // BOM (ver SugerenciaRow en OrdenProduccion.jsx: `cantidad:
+        // Number(bom.cantidad)`, SIN multiplicar por cantidadProgramada
+        // — lo que sí se multiplica es cantidadEnviada/costoTotal). La
+        // fórmula anterior volvía a dividir por cantidadProgramada,
+        // dejando el consumo cantidadProgramada veces más chico de lo
+        // real (ej. orden de 5 piezas: consumía 1/5 de lo que debía).
         for (const d of orden.detalles) {
           const consumoLinea =
-            Math.round(
-              (Number(d.cantidad) / Number(orden.cantidadProgramada)) *
-                cantidad *
-                10000,
-            ) / 10000;
+            Math.round(Number(d.cantidad) * cantidad * 10000) / 10000;
           if (consumoLinea <= 0) continue;
           const valorConsumidoLinea =
             Math.round(consumoLinea * Number(d.costoUnitario) * 100) / 100;
