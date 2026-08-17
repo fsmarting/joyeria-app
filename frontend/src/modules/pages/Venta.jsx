@@ -539,10 +539,11 @@ function EstadoVentaPanel({ venta, refetch }) {
         className="alert alert-warning py-2 mb-0 d-flex justify-content-between align-items-center flex-wrap gap-2"
         style={{ fontSize: 12 }}
       >
-        <span>
-          💰 Pago pendiente de confirmar (efectivo/transferencia sin verificar
-          todavía).
-        </span>
+        {/* ── CAMBIO (este fix) — antes decía "efectivo/transferencia sin
+            verificar todavía", pero desde este fix TODA venta (incluida
+            Tarjeta) nace en este estado, así que el mensaje ya no puede
+            asumir el medio de pago. */}
+        <span>💰 Pago pendiente de confirmar.</span>
         <button
           className="btn btn-success btn-sm"
           onClick={handleConfirmar}

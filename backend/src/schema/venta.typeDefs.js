@@ -116,8 +116,15 @@ export default /* GraphQL */ `
     precioVenta: Float!
     version: Int!
   }
+  # ── FIX (este arreglo) — RepartoInput traía "ventaId: Int!" como campo
+  # OBLIGATORIO, pero guardarReparto ya recibe ventaId aparte (como
+  # argumento de la mutación, ver abajo) y el resolver nunca lee
+  # r.ventaId de cada item — es decir, el campo estaba de más. El
+  # formulario del frontend nunca lo mandaba (con toda razón, porque no
+  # hacía falta), así que GraphQL rechazaba la mutación completa con
+  # "Field ventaId of required type Int! was not provided" en CADA
+  # intento de guardar un reparto. Se quita el campo redundante.
   input RepartoInput {
-    ventaId: Int!
     socioId: Int!
     porcentaje: Float!
   }

@@ -11,6 +11,25 @@ const incItem = {
   cotizacionItem: { include: { cotizacion: true } },
 };
 
+// ── NUEVO (ronda 42, extraído en este fix) — misma fórmula de utilidad
+// en UN solo lugar, para que el número que se MUESTRA (Venta.utilidadReparto,
+// usado en el panel) y el número que se GUARDA por socia (guardarReparto)
+// nunca queden desincronizados.
+const calcularUtilidadReparto = (items, porcentajeComision) => {
+  const margenLineas = (items || []).reduce(
+    (s, i) =>
+      s +
+      (Number(i.baseGravable) - Number(i.costoUnitario)) * Number(i.cantidad),
+    0,
+  );
+  const subtotalConIva = (items || []).reduce(
+    (s, i) => s + Number(i.subtotal),
+    0,
+  );
+  const comision = (subtotalConIva * Number(porcentajeComision)) / 100;
+  return margenLineas - comision;
+};
+
 const incVenta = {
   cliente: true,
   vendedora: true,
@@ -45,17 +64,23 @@ const getComision = async (prisma, vendedoraId, medioPagoId, empresaId) => {
   return { porcentaje };
 };
 
-// ── NUEVO — estado inicial de una venta según medio de pago, igual al
-// criterio que ya usaban registrarVentaMuestrario y convertirEnVenta.
-// Se centraliza aquí para que las 3 formas de venta se comporten igual.
+// ── CAMBIO (este fix, confirmado por el usuario) — antes una venta con
+// medio de pago Tarjeta nacía directo en "Confirmada" (CONF), asumiendo
+// que el pago con tarjeta se verifica al instante en el datáfono. El
+// problema: el carrito (las líneas de la venta) SIEMPRE se arma primero
+// y el pago va DESPUÉS, sin importar el medio — nunca se cobra antes de
+// saber qué se está vendiendo. Como agregarItemVenta solo permite
+// agregar líneas mientras la venta está en ENPR, una venta con Tarjeta
+// nacía ya "confirmada" pero sin ninguna forma de agregarle productos:
+// quedaba huérfana desde el momento en que se creaba (caso real
+// reportado: VTA-2026-0006). Ahora TODA venta nace en ENPR, sin importar
+// el medio de pago — se arma el carrito, y solo al final se confirma el
+// pago con el mismo botón ("Confirmar pago"), que ya existía para
+// efectivo/transferencia y ahora también cubre tarjeta.
 const obtenerEstadoInicialVenta = async (prisma, medioPagoId) => {
-  const medioPago = await prisma.grupo.findUnique({
-    where: { id: Number(medioPagoId) },
-  });
-  const estadoCod = medioPago?.codigo === "TARJ" ? "CONF" : "ENPR";
   const estado = await prisma.grupo.findFirst({
     where: {
-      codigo: estadoCod,
+      codigo: "ENPR",
       subcatalogo: { codigo: "ESTV", catalogo: { codigo: "VENT" } },
     },
   });
@@ -104,19 +129,8 @@ export default {
     // comisión de la vendedora se sigue calculando y restando igual que
     // antes (sobre el valor CON IVA — eso no cambió, solo se corrigió la
     // base de la utilidad para las socias).
-    utilidadReparto: (v) => {
-      const items = v.items || [];
-      const margenLineas = items.reduce(
-        (s, i) =>
-          s +
-          (Number(i.baseGravable) - Number(i.costoUnitario)) *
-            Number(i.cantidad),
-        0,
-      );
-      const subtotalConIva = items.reduce((s, i) => s + Number(i.subtotal), 0);
-      const comision = (subtotalConIva * Number(v.porcentajeComision)) / 100;
-      return margenLineas - comision;
-    },
+    utilidadReparto: (v) =>
+      calcularUtilidadReparto(v.items || [], v.porcentajeComision),
     // ── Etiqueta de origen a nivel de venta — con 1 sola línea (el único
     // caso posible hoy para muestrario/cotización, ver "Fase 1" de la
     // conversación) se ve el origen real de esa línea; con varias líneas
@@ -647,11 +661,17 @@ export default {
         throw new Error(
           `Los porcentajes deben sumar 100% (actual: ${totalPct}%)`,
         );
-      // ── CAMBIO (ronda 34) — totalVenta ahora es la suma de TODAS las
-      // líneas de la venta, no solo un producto.
-      const totalVenta = venta.items.reduce(
-        (s, i) => s + Number(i.subtotal),
-        0,
+      // ── FIX (este arreglo) — antes usaba el valor BRUTO de la venta
+      // (con IVA, sin restar costo ni comisión) para calcular cuánto le
+      // toca a cada socia. Desde la ronda 42 el panel le MUESTRA la
+      // utilidad calculada sobre el margen real (venta.utilidadReparto),
+      // pero acá seguía guardando con la fórmula vieja — es decir, lo que
+      // se guardaba no coincidía con lo que usted veía en pantalla. Ahora
+      // usa la misma fórmula (calcularUtilidadReparto), para que el valor
+      // guardado por socia sea consistente con lo que se muestra.
+      const utilidad = calcularUtilidadReparto(
+        venta.items,
+        venta.porcentajeComision,
       );
       return prisma.$transaction(async (tx) => {
         await tx.repartoUtilidad.updateMany({
@@ -665,7 +685,7 @@ export default {
                 ventaId,
                 socioId: r.socioId,
                 porcentaje: Number(r.porcentaje),
-                valor: (totalVenta * Number(r.porcentaje)) / 100,
+                valor: (utilidad * Number(r.porcentaje)) / 100,
               },
               include: { socio: true },
             }),
