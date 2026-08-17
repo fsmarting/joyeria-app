@@ -2,6 +2,7 @@ import { gql } from "@apollo/client";
 
 const ITEM_FIELDS = `
   id cotizacionId productoId precioUnitario cantidad subtotal nota version
+  porcentajeIva baseGravable valorIva
   producto { id referencia nombre precioVenta foto enStock categoria { nombre } }
 `;
 

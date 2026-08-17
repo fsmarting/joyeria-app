@@ -23,6 +23,11 @@ export default /* GraphQL */ `
     costoManoObra: Float!
     costoOtros: Float!
     multiplicador: Float!
+    # ── NUEVO (ronda 39) — % de IVA vigente de este producto (Colombia:
+    # no todos son 19% — algunos 5%, otros 0%). Ver "deber ser" — es la
+    # tarifa viva que se usa para congelar el desglose de cada línea de
+    # Cotización/Venta en el momento en que se crea.
+    porcentajeIva: Float!
     precioVenta: Float!
     activo: Boolean!
     enStock: Int!
@@ -88,6 +93,7 @@ export default /* GraphQL */ `
     costoManoObra: Float!
     costoOtros: Float!
     multiplicador: Float
+    porcentajeIva: Float
     precioVenta: Float!
     version: Int!
   }
@@ -102,6 +108,7 @@ export default /* GraphQL */ `
     costoManoObra: Float!
     costoOtros: Float!
     multiplicador: Float
+    porcentajeIva: Float
     precioVenta: Float!
     version: Int!
   }

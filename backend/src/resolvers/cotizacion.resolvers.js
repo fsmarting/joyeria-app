@@ -1,5 +1,6 @@
 import { requireAuth } from "../utils/authHelpers.js";
 import { validarEmpresa } from "../utils/validations.js";
+import { calcularIvaDesglose } from "../utils/ivaHelpers.js";
 
 const cleanForUpdate = (obj) =>
   Object.fromEntries(
@@ -143,6 +144,15 @@ export default {
           });
           for (const p of piezas) {
             const precio = Number(p.producto?.precioVenta ?? 0);
+            // ── NUEVO (ronda 39) — precio YA incluye IVA; se congela el
+            // desglose con la tarifa vigente del producto en este instante
+            // (informativo, para que la cotización impresa siempre
+            // muestre los mismos números aunque el % cambie después).
+            const pctIva = Number(p.producto?.porcentajeIva ?? 19);
+            const { baseGravable, valorIva } = calcularIvaDesglose(
+              precio,
+              pctIva,
+            );
             await tx.cotizacionItem.create({
               data: {
                 cotizacionId: cot.id,
@@ -150,6 +160,9 @@ export default {
                 precioUnitario: precio,
                 cantidad: 1,
                 subtotal: precio,
+                porcentajeIva: pctIva,
+                baseGravable,
+                valorIva,
               },
             });
           }
@@ -220,8 +233,25 @@ export default {
       validarEmpresa(cotizacion.empresaId, user.empresaActualId);
       const subtotal =
         Number(input.precioUnitario) * Number(input.cantidad ?? 1);
+      // ── NUEVO (ronda 39) — se congela el desglose de IVA con la tarifa
+      // vigente del producto EN ESTE INSTANTE (ver ivaHelpers.js).
+      const producto = await prisma.producto.findUnique({
+        where: { id: Number(input.productoId) },
+      });
+      const pctIva = Number(producto?.porcentajeIva ?? 19);
+      const { baseGravable, valorIva } = calcularIvaDesglose(
+        Number(input.precioUnitario),
+        pctIva,
+      );
       return prisma.cotizacionItem.create({
-        data: { ...input, cantidad: input.cantidad ?? 1, subtotal },
+        data: {
+          ...input,
+          cantidad: input.cantidad ?? 1,
+          subtotal,
+          porcentajeIva: pctIva,
+          baseGravable,
+          valorIva,
+        },
         include: { producto: { include: { categoria: true } } },
       });
     },
@@ -229,13 +259,30 @@ export default {
     actualizarItemCotizacion: async (_, { input }, { prisma, user }) => {
       requireAuth(user);
       const { id, version, ...data } = input;
+      // ── NUEVO (ronda 39) — a diferencia de "agregar", aquí NO se vuelve
+      // a consultar el % de IVA vigente del producto. Se conserva el
+      // `porcentajeIva` ya congelado en la línea original (editar es una
+      // corrección a la misma cotización, no un nuevo evento de cotizar)
+      // y solo se recalcula base/IVA si cambia el precio, contra esa
+      // MISMA tarifa ya congelada.
+      const original = await prisma.cotizacionItem.findUnique({
+        where: { id: Number(id) },
+      });
+      if (!original) throw new Error("Ítem de la cotización no existe");
       const subtotal = Number(data.precioUnitario) * Number(data.cantidad ?? 1);
+      const pctIva = Number(original.porcentajeIva ?? 19);
+      const { baseGravable, valorIva } = calcularIvaDesglose(
+        Number(data.precioUnitario),
+        pctIva,
+      );
       const result = await prisma.cotizacionItem.updateMany({
         where: { id: Number(id), version: Number(version) },
         data: {
           ...data,
           cantidad: data.cantidad ?? 1,
           subtotal,
+          baseGravable,
+          valorIva,
           version: { increment: 1 },
         },
       });
@@ -348,6 +395,20 @@ export default {
               usu_creacion: user.codigo,
             },
           });
+          // ── NUEVO (ronda 39) — el IVA "es de papá gobierno, no de la
+          // joyería": la Venta es el evento fiscalmente vinculante, así
+          // que su desglose de IVA se recalcula FRESCO aquí, con la
+          // tarifa VIGENTE del producto en este instante — NUNCA se copia
+          // el desglose ya congelado de la cotización (item.porcentajeIva),
+          // porque si el % de IVA cambió entre el día que se cotizó y el
+          // día que se vende, la venta debe reflejar la tarifa con la que
+          // realmente se está cobrando hoy, no la que estaba vigente
+          // cuando se cotizó (ver ejemplo del "día 15" acordado).
+          const pctIvaVenta = Number(item.producto?.porcentajeIva ?? 19);
+          const { baseGravable, valorIva } = calcularIvaDesglose(
+            Number(item.precioUnitario),
+            pctIvaVenta,
+          );
           await tx.ventaDetalle.create({
             data: {
               ventaId: venta.id,
@@ -360,6 +421,9 @@ export default {
               cantidad: item.cantidad,
               precioVenta: item.precioUnitario,
               subtotal,
+              porcentajeIva: pctIvaVenta,
+              baseGravable,
+              valorIva,
               usu_creacion: user.codigo,
             },
           });

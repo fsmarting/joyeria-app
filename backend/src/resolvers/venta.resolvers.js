@@ -1,5 +1,6 @@
 import { requireAuth } from "../utils/authHelpers.js";
 import { validarEmpresa } from "../utils/validations.js";
+import { calcularIvaDesglose } from "../utils/ivaHelpers.js";
 
 const incItem = {
   producto: { include: { categoria: true } },
@@ -347,6 +348,15 @@ export default {
           `Sin stock suficiente para ${producto.nombre}. Disponible: ${producto.enStock}`,
         );
       const subtotal = cantidad * Number(input.precioVenta);
+      // ── NUEVO (ronda 39) — la Venta es el evento fiscalmente
+      // vinculante ("el IVA es de papá gobierno"): se congela el desglose
+      // con la tarifa VIGENTE del producto en este instante — si el %
+      // cambia después, esta línea histórica no se ve afectada.
+      const pctIva = Number(producto.porcentajeIva ?? 19);
+      const { baseGravable, valorIva } = calcularIvaDesglose(
+        Number(input.precioVenta),
+        pctIva,
+      );
       return prisma.$transaction(async (tx) => {
         await tx.producto.update({
           where: { id: Number(input.productoId) },
@@ -359,6 +369,9 @@ export default {
             cantidad,
             precioVenta: Number(input.precioVenta),
             subtotal,
+            porcentajeIva: pctIva,
+            baseGravable,
+            valorIva,
             usu_creacion: user.codigo,
           },
           include: incItem,
@@ -381,6 +394,17 @@ export default {
       if (nuevaCantidad <= 0) throw new Error("La cantidad debe ser mayor a 0");
       const subtotal = nuevaCantidad * Number(precioVenta);
       const delta = nuevaCantidad - Number(original.cantidad);
+      // ── NUEVO (ronda 39) — igual que en actualizarItemCotizacion: al
+      // EDITAR una línea ya vendida se conserva el `porcentajeIva` ya
+      // congelado (no se vuelve a consultar el producto) — editar es una
+      // corrección al mismo hecho de venta, no un nuevo hecho generador
+      // del impuesto. Solo se recalcula base/IVA con el (posiblemente
+      // nuevo) precio, contra esa MISMA tarifa ya congelada.
+      const pctIva = Number(original.porcentajeIva ?? 19);
+      const { baseGravable, valorIva } = calcularIvaDesglose(
+        Number(precioVenta),
+        pctIva,
+      );
 
       return prisma.$transaction(async (tx) => {
         if (delta !== 0) {
@@ -402,6 +426,8 @@ export default {
             cantidad: nuevaCantidad,
             precioVenta: Number(precioVenta),
             subtotal,
+            baseGravable,
+            valorIva,
             version: { increment: 1 },
             usu_actualizacion: user.codigo,
           },

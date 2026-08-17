@@ -6,6 +6,11 @@ export default /* GraphQL */ `
     precioUnitario: Float!
     cantidad: Int!
     subtotal: Float!
+    # ── NUEVO (ronda 39) — desglose de IVA congelado al crear esta línea
+    # (informativo, ver "deber ser" — precioUnitario ya incluye IVA).
+    porcentajeIva: Float!
+    baseGravable: Float!
+    valorIva: Float!
     nota: String
     version: Int!
     producto: Producto

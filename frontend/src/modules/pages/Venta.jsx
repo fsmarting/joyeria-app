@@ -64,7 +64,20 @@ function ItemRow({ item, onActualizar, onEliminar }) {
             onChange={(e) => setForm({ ...form, precioVenta: e.target.value })}
           />
         ) : (
-          fmt(item.precioVenta)
+          <>
+            {fmt(item.precioVenta)}
+            {/* ── NUEVO (ronda 39) — desglose de IVA congelado al momento
+                de crear esta línea (ver "deber ser": el IVA "es de papá
+                gobierno" — se muestra cuánto de este precio es base
+                gravable y cuánto es IVA, con la tarifa vigente cuando SE
+                VENDIÓ, no la de hoy). */}
+            {item.porcentajeIva != null && (
+              <div className="text-muted" style={{ fontSize: 10 }}>
+                base {fmt(item.baseGravable)} + IVA {item.porcentajeIva}%{" "}
+                {fmt(item.valorIva)}
+              </div>
+            )}
+          </>
         )}
       </td>
       <td className="fw-bold">{edit ? fmt(total) : fmt(item.subtotal)}</td>

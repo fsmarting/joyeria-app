@@ -250,6 +250,13 @@ model Producto {
   version Int @default(1)
   deletedAt DateTime?
   multiplicador Decimal @default(2.25) @db.Decimal(5,2)
+  // ── NUEVO (ronda 39) — % de IVA vigente de ESTE producto (Colombia: no
+  // todos los productos tienen el mismo % — la mayoría 19%, algunos 5%,
+  // otros 0%). Es la tarifa "viva": se usa para calcular el desglose
+  // base/IVA de cada línea de Cotización/Venta EN EL MOMENTO en que esa
+  // línea se crea (ver CotizacionItem/VentaDetalle abajo, que congelan su
+  // propio valor y no dependen de este campo después de creados).
+  porcentajeIva Decimal @default(19) @db.Decimal(5,2)
   empresa Empresa @relation("Producto_empresa", fields: [empresaId], references: [id])
   categoria Grupo? @relation("Producto_Categoria", fields: [categoriaId], references: [id])
   piedras ProductoPiedra[] @relation("ProductoPiedra_Producto")
@@ -499,6 +506,17 @@ model VentaDetalle {
   cantidad Int @default(1)
   precioVenta Decimal @db.Decimal(12,2)
   subtotal Decimal @db.Decimal(12,2)
+  // ── NUEVO (ronda 39) — desglose de IVA CONGELADO en el momento en que
+  // esta línea se creó (venta directa, venta desde muestrario, o
+  // conversión de una cotización). precioVenta YA incluye IVA; este es el
+  // "papá gobierno" discriminado: baseGravable + valorIva == precioVenta
+  // (por línea, antes de multiplicar por cantidad). Se congela con la
+  // tarifa vigente del producto EN ESE MOMENTO — si el % de IVA cambia
+  // después, esta línea histórica no se ve afectada (por eso vive aquí y
+  // no se recalcula desde Producto.porcentajeIva).
+  porcentajeIva Decimal @default(19) @db.Decimal(5,2)
+  baseGravable Decimal @default(0) @db.Decimal(12,2)
+  valorIva Decimal @default(0) @db.Decimal(12,2)
   fec_creacion DateTime @default(now())
   usu_creacion String?
   fec_actualizacion DateTime @updatedAt
@@ -747,6 +765,16 @@ model CotizacionItem {
   cantidad       Int       @default(1)
   subtotal       Decimal   @default(0) @db.Decimal(12,2)
   nota           String?   @db.VarChar(300)
+  // ── NUEVO (ronda 39) — desglose de IVA congelado al momento de crear
+  // esta línea de cotización (informativo — NO es fiscalmente vinculante
+  // porque todavía no hay dinero de por medio, pero se congela igual para
+  // que si alguien reimprime la cotización días después, siga mostrando
+  // los mismos números con los que se imprimió/envió la primera vez,
+  // aunque el % de IVA del producto ya haya cambiado). precioUnitario ya
+  // incluye IVA; baseGravable + valorIva == precioUnitario.
+  porcentajeIva  Decimal   @default(19) @db.Decimal(5,2)
+  baseGravable   Decimal   @default(0) @db.Decimal(12,2)
+  valorIva       Decimal   @default(0) @db.Decimal(12,2)
   version        Int       @default(1)
   deletedAt      DateTime?
 

@@ -1,5 +1,6 @@
 import { requireAuth } from "../utils/authHelpers.js";
 import { validarEmpresa } from "../utils/validations.js";
+import { calcularIvaDesglose } from "../utils/ivaHelpers.js";
 
 const incBom = {
   categoria: true,
@@ -63,13 +64,27 @@ const calcCosteoAsync = async (p, prisma) => {
     costoPiedras + Number(p.costoManoObra) + Number(p.costoOtros);
   const mult = Number(p.multiplicador ?? 2.25);
   const precioSugerido = Math.round(costoTotal * mult);
-  const pvpConIva = Math.round(precioSugerido * 1.19);
+  // ── CAMBIO (ronda 39) — antes 1.19/0.19 fijos en el código; ahora usan
+  // el % de IVA propio de ESTE producto (no todos son 19% — ver
+  // Producto.porcentajeIva). ivaValor sale por diferencia contra
+  // pvpConIva (no independientemente redondeado), mismo criterio de
+  // ivaHelpers.js, para que pvpConIva === precioSugerido + ivaValor
+  // siempre cuadre exacto.
+  const pctIva = Number(p.porcentajeIva ?? 19);
+  const pvpConIva = Math.round(precioSugerido * (1 + pctIva / 100));
+  const ivaValor = pvpConIva - precioSugerido;
   const precioVenta = Number(p.precioVenta);
+  // ── FIX (ronda 39) — precioVenta es el precio CON IVA incluido (ver
+  // "deber ser" acordado); compararlo directo contra costoTotal (que no
+  // tiene IVA) inflaba el margen. Ahora se le quita el IVA propio del
+  // producto primero (misma regla de redondeo de ivaHelpers.js) y se
+  // compara esa base sin IVA contra el costo.
+  const baseVentaSinIva = calcularIvaDesglose(precioVenta, pctIva).baseGravable;
   const margen =
-    precioVenta > 0
-      ? Math.round(((precioVenta - costoTotal) / precioVenta) * 10000) / 100
+    baseVentaSinIva > 0
+      ? Math.round(((baseVentaSinIva - costoTotal) / baseVentaSinIva) * 10000) /
+        100
       : 0;
-  const ivaValor = Math.round(precioSugerido * 0.19);
   const conTarjeta = Math.round(precioSugerido * 1.07);
   const comisionMax = Math.round(precioVenta * 0.2);
 
@@ -106,6 +121,7 @@ export default {
 
   Producto: {
     multiplicador: (p) => Number(p.multiplicador ?? 2.25),
+    porcentajeIva: (p) => Number(p.porcentajeIva ?? 19),
     costoPiedras: async (p, _, { prisma }) =>
       (await calcCosteoAsync(p, prisma)).costoPiedras,
     costoOro: async (p, _, { prisma }) =>
@@ -374,6 +390,9 @@ export default {
         data: {
           ...input,
           multiplicador: input.multiplicador ?? 2.25,
+          // ── NUEVO (ronda 39) — 19% por defecto si no se especifica (la
+          // mayoría de productos), pero editable por producto.
+          porcentajeIva: input.porcentajeIva ?? 19,
           enStock: 0,
           activo: true,
           usu_creacion: user.codigo,
@@ -390,6 +409,12 @@ export default {
       });
       if (!original) throw new Error("Producto no existe");
       validarEmpresa(original.empresaId, user.empresaActualId);
+      // ── OJO (ronda 39) — a propósito NO se hace `porcentajeIva ?? 19`
+      // aquí como sí se hace con `multiplicador`. Si un producto tiene un
+      // % de IVA distinto de 19 (ej. 5% o 0%) y se actualiza sin mandar
+      // ese campo, forzar el default lo resetearía silenciosamente a 19%
+      // — con `...data` (spread) simplemente no se toca esa columna si no
+      // viene en el input, que es el comportamiento correcto.
       const result = await prisma.producto.updateMany({
         where: { id: Number(id), version: Number(version) },
         data: {

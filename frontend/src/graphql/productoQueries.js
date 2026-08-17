@@ -20,7 +20,7 @@ export const GET_PRODUCTOS_CURSOR = gql`
         node {
           id referencia nombre descripcion foto empresaId
           costoManoObra costoOtros
-          multiplicador precioVenta enStock activo version
+          multiplicador porcentajeIva precioVenta enStock activo version
           categoria { id nombre }
           costoPiedras costoOro costoTotal
           precioSugerido pvpConIva margen

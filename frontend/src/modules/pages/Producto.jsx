@@ -574,6 +574,7 @@ function BomPanel({ producto, refetch }) {
   const costoTotal = Number(producto.costoTotal ?? 0);
   const mult = Number(producto.multiplicador ?? 2.25);
   const precioSugerido = Number(producto.precioSugerido ?? 0);
+  const pctIva = Number(producto.porcentajeIva ?? 19);
   const pvpConIva = Number(producto.pvpConIva ?? 0);
   const precioVenta = Number(producto.precioVenta);
   const ivaValor = Number(producto.ivaValor ?? 0);
@@ -644,6 +645,12 @@ function BomPanel({ producto, refetch }) {
 
   const handleUsarSugerido = async () => {
     try {
+      // 🩹 FIX (ronda 39) — antes mandaba precioVenta: precioSugerido (el
+      // precio SIN IVA), pero precioVenta se formalizó como "precio con
+      // IVA incluido" (ver "deber ser" acordado con el usuario) — el
+      // botón "usar sugerido" debe llevar al precio CON IVA (pvpConIva),
+      // no al precio antes de impuestos. También se manda porcentajeIva
+      // explícito para que el update sea autocontenido.
       await actualizarProducto({
         variables: {
           input: {
@@ -657,12 +664,15 @@ function BomPanel({ producto, refetch }) {
             costoManoObra: Number(producto.costoManoObra),
             costoOtros: Number(producto.costoOtros),
             multiplicador: mult,
-            precioVenta: precioSugerido,
+            porcentajeIva: pctIva,
+            precioVenta: pvpConIva,
             version: producto.version,
           },
         },
       });
-      toast.success("Precio de venta actualizado al sugerido");
+      toast.success(
+        "Precio de venta actualizado al sugerido (con IVA incluido)",
+      );
       await refetch();
     } catch (e) {
       toast.error(e.message);
@@ -847,8 +857,13 @@ function BomPanel({ producto, refetch }) {
           quedó por debajo del precioSugerido recalculado — el margen real
           ya es menor al que el usuario cree que tiene. No se actualiza
           solo (precioVenta sigue siendo decisión manual, ver BomPanel más
-          arriba) — solo se avisa, con acceso directo a "usar sugerido". */}
-      {precioSugerido > 0 && precioVenta < precioSugerido && (
+          arriba) — solo se avisa, con acceso directo a "usar sugerido".
+          🩹 FIX (ronda 39) — antes comparaba precioVenta (que YA incluye
+          IVA) contra precioSugerido (que NO incluye IVA) — comparación de
+          peras con manzanas que disparaba el aviso de forma incorrecta.
+          Ahora compara contra pvpConIva (precio sugerido CON IVA), que es
+          la misma base que precioVenta. */}
+      {pvpConIva > 0 && precioVenta < pvpConIva && (
         <div
           className="alert alert-warning py-2 mb-3 d-flex justify-content-between align-items-center flex-wrap gap-2"
           style={{ fontSize: 12 }}
@@ -858,16 +873,15 @@ function BomPanel({ producto, refetch }) {
               <>
                 ⚠ Este producto todavía no tiene{" "}
                 <strong>precio de venta</strong> definido — el precio sugerido
-                según el costeo actual es <strong>{fmt(precioSugerido)}</strong>
-                .
+                (con IVA incluido) según el costeo actual es{" "}
+                <strong>{fmt(pvpConIva)}</strong>.
               </>
             ) : (
               <>
                 ⚠ El precio de venta actual (<strong>{fmt(precioVenta)}</strong>
-                ) quedó por debajo del precio sugerido (
-                <strong>{fmt(precioSugerido)}</strong>) — probablemente por un
-                cambio reciente en el BOM. El margen real hoy es menor al
-                esperado.
+                ) quedó por debajo del precio sugerido con IVA (
+                <strong>{fmt(pvpConIva)}</strong>) — probablemente por un cambio
+                reciente en el BOM. El margen real hoy es menor al esperado.
               </>
             )}
           </span>
@@ -875,7 +889,7 @@ function BomPanel({ producto, refetch }) {
             className="btn btn-warning btn-sm"
             onClick={handleUsarSugerido}
           >
-            Actualizar a {fmt(precioSugerido)}
+            Actualizar a {fmt(pvpConIva)}
           </button>
         </div>
       )}
@@ -926,15 +940,23 @@ function BomPanel({ producto, refetch }) {
                     {fmt(precioSugerido)}
                   </td>
                 </tr>
+                {/* 🩹 FIX (ronda 39) — antes decía "PVP + IVA (×1.19)" fijo;
+                    ahora refleja el % de IVA real de este producto (no
+                    todos son 19% — ver campo "% IVA" arriba). */}
                 <tr>
-                  <td className="text-muted">PVP + IVA (×1.19)</td>
+                  <td className="text-muted">
+                    PVP c/IVA (×{(1 + pctIva / 100).toFixed(2)})
+                  </td>
                   <td className="text-end fw-bold">{fmt(pvpConIva)}</td>
                 </tr>
                 <tr>
                   <td className="text-muted">Precio venta actual</td>
                   <td className="text-end fw-bold text-success">
                     {fmt(precioVenta)}
-                    {precioVenta !== precioSugerido && (
+                    {/* 🩹 FIX (ronda 39) — antes comparaba contra
+                        precioSugerido (sin IVA); ahora contra pvpConIva
+                        (con IVA), consistente con handleUsarSugerido. */}
+                    {precioVenta !== pvpConIva && (
                       <button
                         className="btn btn-link btn-sm p-0 ms-2"
                         style={{ fontSize: 11 }}
@@ -946,7 +968,7 @@ function BomPanel({ producto, refetch }) {
                   </td>
                 </tr>
                 <tr>
-                  <td className="text-muted">IVA (19%)</td>
+                  <td className="text-muted">IVA ({pctIva.toFixed(0)}%)</td>
                   <td className="text-end">{fmt(ivaValor)}</td>
                 </tr>
                 <tr>

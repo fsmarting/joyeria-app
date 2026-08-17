@@ -61,7 +61,19 @@ function ItemRow({ item, onActualizar, onEliminar }) {
             onChange={(e) => setPrecio(e.target.value)}
           />
         ) : (
-          fmt(item.precioUnitario)
+          <>
+            {fmt(item.precioUnitario)}
+            {/* ── NUEVO (ronda 39) — desglose de IVA congelado al crear
+                esta línea (informativo — la cotización no es un hecho
+                fiscalmente vinculante, pero se congela igual para que la
+                impresión no cambie si el % de IVA cambia después). */}
+            {item.porcentajeIva != null && (
+              <div className="text-muted" style={{ fontSize: 10 }}>
+                base {fmt(item.baseGravable)} + IVA {item.porcentajeIva}%{" "}
+                {fmt(item.valorIva)}
+              </div>
+            )}
+          </>
         )}
       </td>
       <td>

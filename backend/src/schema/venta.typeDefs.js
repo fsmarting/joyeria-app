@@ -47,6 +47,13 @@ export default /* GraphQL */ `
     precioVenta: Float!
     subtotal: Float!
     version: Int!
+    # ── NUEVO (ronda 39) — desglose de IVA congelado al momento en que
+    # esta línea se creó (venta directa, desde muestrario, o conversión
+    # de cotización). precioVenta ya incluye IVA; baseGravable + valorIva
+    # == precioVenta (por unidad, antes de multiplicar por cantidad).
+    porcentajeIva: Float!
+    baseGravable: Float!
+    valorIva: Float!
     producto: Producto
     venta: Venta
     cotizacionItem: CotizacionItem

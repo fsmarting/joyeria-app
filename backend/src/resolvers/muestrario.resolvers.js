@@ -1,5 +1,6 @@
 import { requireAuth } from "../utils/authHelpers.js";
 import { validarEmpresa } from "../utils/validations.js";
+import { calcularIvaDesglose } from "../utils/ivaHelpers.js";
 
 // ── CAMBIO (ronda 34) — antes: ventas { ... cliente medioPago estado }
 // (la venta era 1 solo producto, así que esos campos vivían ahí mismo).
@@ -233,10 +234,13 @@ export default {
       } = input;
       const cantidad = Number(input.cantidad ?? 1);
       if (cantidad <= 0) throw new Error("La cantidad debe ser mayor a 0");
+      // ── CAMBIO (ronda 39) — se agrega `producto: true` para poder leer
+      // su porcentajeIva vigente y congelar el desglose de esta venta.
       const item = await prisma.muestrarioItem.findUnique({
         where: { id: muestrarioItemId },
         include: {
           muestrario: true,
+          producto: true,
           ventaDetalles: {
             where: {
               deletedAt: null,
@@ -292,6 +296,15 @@ export default {
       });
       const numero = `${prefijo}${String(count + 1).padStart(4, "0")}`;
 
+      // ── NUEVO (ronda 39) — vender desde muestrario también es un hecho
+      // de venta fiscalmente vinculante: se congela el desglose de IVA
+      // con la tarifa vigente del producto en este instante.
+      const pctIva = Number(item.producto?.porcentajeIva ?? 19);
+      const { baseGravable, valorIva } = calcularIvaDesglose(
+        Number(precioVenta),
+        pctIva,
+      );
+
       return prisma.$transaction(async (tx) => {
         const venta = await tx.venta.create({
           data: {
@@ -314,6 +327,9 @@ export default {
             cantidad,
             precioVenta: Number(precioVenta),
             subtotal: Number(precioVenta) * cantidad,
+            porcentajeIva: pctIva,
+            baseGravable,
+            valorIva,
             usu_creacion: user.codigo,
           },
         });

@@ -102,12 +102,25 @@ export const camposProducto = [
     valorDefecto: 2.25,
     render: (f) => `×${Number(f.multiplicador ?? 2.25).toFixed(2)}`,
   },
+  // ── NUEVO (ronda 39) — % de IVA propio de este producto (Colombia: no
+  // todos son 19% — algunos 5%, otros 0%). Ver "deber ser" acordado con
+  // el usuario: es la tarifa VIVA que se usa para congelar el desglose
+  // de cada línea de Cotización/Venta al momento de crearse.
+  {
+    nombre: "porcentajeIva",
+    etiqueta: "% IVA",
+    tipoForm: "number",
+    ancho: "80px",
+    ordenListado: 8,
+    valorDefecto: 19,
+    render: (f) => pct(f.porcentajeIva ?? 19),
+  },
   {
     nombre: "costoTotal",
     etiqueta: "Costo Total",
     soloListado: true,
     ancho: "110px",
-    ordenListado: 8,
+    ordenListado: 9,
     render: (f) => fmt(f.costoTotal),
   },
   {
@@ -115,15 +128,17 @@ export const camposProducto = [
     etiqueta: "P. Sugerido",
     soloListado: true,
     ancho: "110px",
-    ordenListado: 9,
+    ordenListado: 10,
     render: (f) => fmt(f.precioSugerido),
   },
   {
     nombre: "pvpConIva",
-    etiqueta: "PVP + IVA",
+    // ── CAMBIO (ronda 39) — antes decía "PVP + IVA" a secas (asumía
+    // 19% fijo); ahora la etiqueta refleja el % real de este producto.
+    etiqueta: "PVP c/IVA",
     soloListado: true,
     ancho: "110px",
-    ordenListado: 10,
+    ordenListado: 11,
     render: (f) => fmt(f.pvpConIva),
   },
   // ── precioVenta: oculto en creación ─────────────────────────────
@@ -138,7 +153,7 @@ export const camposProducto = [
     etiqueta: "Precio Venta",
     tipoForm: "number",
     ancho: "120px",
-    ordenListado: 11,
+    ordenListado: 12,
     valorDefecto: 0,
     ocultarEnCreacion: true,
     render: (f) => fmt(f.precioVenta),
@@ -148,7 +163,7 @@ export const camposProducto = [
     etiqueta: "Margen",
     soloListado: true,
     ancho: "80px",
-    ordenListado: 12,
+    ordenListado: 13,
     render: (f) => {
       const m = Number(f.margen);
       const c = m >= 50 ? "success" : m >= 30 ? "warning" : "danger";
@@ -160,7 +175,7 @@ export const camposProducto = [
     etiqueta: "Stock",
     soloListado: true,
     ancho: "80px",
-    ordenListado: 13,
+    ordenListado: 14,
     render: (f) => {
       const s = Number(f.enStock ?? 0);
       const c = s > 3 ? "success" : s > 0 ? "warning" : "secondary";
