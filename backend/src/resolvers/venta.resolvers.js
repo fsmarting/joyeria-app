@@ -5,6 +5,7 @@ import {
   calcularCostoProducto,
   incCosteoProducto,
 } from "../utils/costeoHelpers.js";
+import { parseFechaColombia } from "../utils/fechaHelpers.js";
 
 const incItem = {
   producto: { include: { categoria: true } },
@@ -233,7 +234,7 @@ export default {
         data: {
           ...input,
           numero,
-          fecha: new Date(input.fecha),
+          fecha: parseFechaColombia(input.fecha),
           porcentajeComision: porcentaje,
           estadoId: estado.id,
           usu_creacion: user.codigo,
@@ -267,7 +268,7 @@ export default {
         where: { id: Number(id), version: Number(version) },
         data: {
           ...data,
-          fecha: new Date(data.fecha),
+          fecha: parseFechaColombia(data.fecha),
           porcentajeComision: porcentaje,
           version: { increment: 1 },
           usu_actualizacion: user.codigo,
@@ -650,7 +651,6 @@ export default {
 
     guardarReparto: async (_, { ventaId, repartos }, { prisma, user }) => {
       requireAuth(user);
-      console.log("Guardar reparto");
       const venta = await prisma.venta.findUnique({
         where: { id: ventaId },
         include: { items: { where: { deletedAt: null } } },
@@ -674,7 +674,6 @@ export default {
         venta.items,
         venta.porcentajeComision,
       );
-      console.log("Guardar reparto Utilidad", utilidad);
       return prisma.$transaction(async (tx) => {
         await tx.repartoUtilidad.updateMany({
           where: { ventaId, deletedAt: null },

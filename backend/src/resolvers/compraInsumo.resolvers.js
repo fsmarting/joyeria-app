@@ -1,5 +1,6 @@
 import { requireAuth } from "../utils/authHelpers.js";
 import { validarEmpresa } from "../utils/validations.js";
+import { parseFechaColombia } from "../utils/fechaHelpers.js";
 
 const incluirItem = {
   piedra: { include: { tipo: true, unidad: true } },
@@ -118,7 +119,7 @@ export default {
       return prisma.compra.create({
         data: {
           ...input,
-          fecha: new Date(input.fecha),
+          fecha: parseFechaColombia(input.fecha),
           usu_creacion: user.codigo,
         },
         include: incluirCompra,
@@ -137,7 +138,7 @@ export default {
         where: { id: Number(id), version: Number(version) },
         data: {
           ...data,
-          fecha: new Date(data.fecha),
+          fecha: parseFechaColombia(data.fecha),
           version: { increment: 1 },
           usu_actualizacion: user.codigo,
         },

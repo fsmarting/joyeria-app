@@ -5,6 +5,7 @@ import {
   calcularCostoProducto,
   incCosteoProducto,
 } from "../utils/costeoHelpers.js";
+import { parseFechaColombia } from "../utils/fechaHelpers.js";
 
 // ── CAMBIO (ronda 34) — antes: ventas { ... cliente medioPago estado }
 // (la venta era 1 solo producto, así que esos campos vivían ahí mismo).
@@ -126,7 +127,7 @@ export default {
         data: {
           ...input,
           numero,
-          fechaSalida: new Date(input.fechaSalida),
+          fechaSalida: parseFechaColombia(input.fechaSalida),
           estado: "ACTIVO",
           usu_creacion: user.codigo,
         },

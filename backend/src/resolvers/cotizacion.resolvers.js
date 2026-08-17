@@ -5,6 +5,7 @@ import {
   calcularCostoProducto,
   incCosteoProducto,
 } from "../utils/costeoHelpers.js";
+import { parseFechaColombia } from "../utils/fechaHelpers.js";
 
 const cleanForUpdate = (obj) =>
   Object.fromEntries(
@@ -130,7 +131,7 @@ export default {
         const cot = await tx.cotizacion.create({
           data: {
             ...input,
-            fecha: new Date(input.fecha),
+            fecha: parseFechaColombia(input.fecha),
             validezDias: input.validezDias ?? 15,
             usu_creacion: user.codigo,
           },
@@ -202,7 +203,7 @@ export default {
         where: { id: Number(id), version: Number(version) },
         data: {
           ...dataLimpia,
-          fecha: new Date(dataLimpia.fecha),
+          fecha: parseFechaColombia(dataLimpia.fecha),
           version: { increment: 1 },
           usu_actualizacion: user.codigo,
         },
@@ -398,7 +399,7 @@ export default {
               numero,
               clienteId: cotizacion.clienteId,
               vendedoraId: cotizacion.vendedoraId ?? null,
-              fecha: fecha ? new Date(fecha) : new Date(),
+              fecha: fecha ? parseFechaColombia(fecha) : new Date(),
               medioPagoId: Number(medioPagoId),
               porcentajeComision: porcentaje,
               estadoId: estadoVenta.id,

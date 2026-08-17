@@ -1,5 +1,6 @@
 import { requireAuth } from "../utils/authHelpers.js";
 import { validarEmpresa } from "../utils/validations.js";
+import { parseFechaColombia } from "../utils/fechaHelpers.js";
 
 // ⚠️ producto.include DEBE traer también "piedras" (el BOM) — la query
 // del frontend (ORDEN_FIELDS → PRODUCTO_BOM_FIELDS) pide orden.producto.piedras
@@ -364,9 +365,9 @@ export default {
           ...input,
           numero,
           estadoId: pendienteId,
-          fechaEnvio: new Date(input.fechaEnvio),
+          fechaEnvio: parseFechaColombia(input.fechaEnvio),
           fechaEstimada: input.fechaEstimada
-            ? new Date(input.fechaEstimada)
+            ? parseFechaColombia(input.fechaEstimada)
             : null,
           costoUnitarioEstandard,
           costoTotalEstandard,
@@ -412,11 +413,13 @@ export default {
         where: { id: Number(id), version: Number(version) },
         data: {
           ...data,
-          fechaEnvio: new Date(data.fechaEnvio),
+          fechaEnvio: parseFechaColombia(data.fechaEnvio),
           fechaEstimada: data.fechaEstimada
-            ? new Date(data.fechaEstimada)
+            ? parseFechaColombia(data.fechaEstimada)
             : null,
-          fechaEntrega: data.fechaEntrega ? new Date(data.fechaEntrega) : null,
+          fechaEntrega: data.fechaEntrega
+            ? parseFechaColombia(data.fechaEntrega)
+            : null,
           costoTotalEstandard,
           version: { increment: 1 },
           usu_actualizacion: user.codigo,
