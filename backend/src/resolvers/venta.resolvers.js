@@ -650,6 +650,7 @@ export default {
 
     guardarReparto: async (_, { ventaId, repartos }, { prisma, user }) => {
       requireAuth(user);
+      console.log("Guardar reparto");
       const venta = await prisma.venta.findUnique({
         where: { id: ventaId },
         include: { items: { where: { deletedAt: null } } },
@@ -673,6 +674,7 @@ export default {
         venta.items,
         venta.porcentajeComision,
       );
+      console.log("Guardar reparto Utilidad", utilidad);
       return prisma.$transaction(async (tx) => {
         await tx.repartoUtilidad.updateMany({
           where: { ventaId, deletedAt: null },
