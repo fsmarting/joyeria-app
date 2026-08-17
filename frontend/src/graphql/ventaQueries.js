@@ -8,13 +8,14 @@ const ITEM_FIELDS = `
   id ventaId productoId muestrarioItemId cotizacionItemId
   cantidad precioVenta subtotal version origenLabel
   porcentajeIva baseGravable valorIva
+  costoUnitario margen
   producto { id referencia nombre }
 `;
 
 const VENTA_FIELDS = `
   id empresaId numero clienteId vendedoraId canalId medioPagoId fecha
   porcentajeComision estadoId version fechaEntrega
-  totalItems valorTotal valorComision origenLabel
+  totalItems valorTotal valorComision origenLabel utilidadReparto
   cliente   { id nombre telefono }
   vendedora { id nombre }
   canal     { id codigo nombre }

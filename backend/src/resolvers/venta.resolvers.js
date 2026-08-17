@@ -1,6 +1,10 @@
 import { requireAuth } from "../utils/authHelpers.js";
 import { validarEmpresa } from "../utils/validations.js";
 import { calcularIvaDesglose } from "../utils/ivaHelpers.js";
+import {
+  calcularCostoProducto,
+  incCosteoProducto,
+} from "../utils/costeoHelpers.js";
 
 const incItem = {
   producto: { include: { categoria: true } },
@@ -93,6 +97,26 @@ export default {
       const total = (v.items || []).reduce((s, i) => s + Number(i.subtotal), 0);
       return (total * Number(v.porcentajeComision)) / 100;
     },
+    // ── NUEVO (ronda 42) — "deber ser" acordado: la utilidad que se
+    // reparte entre las socias debe ser sobre el MARGEN real, no sobre
+    // el valor bruto de la venta. Por cada línea: (precio sin IVA −
+    // costo de producir esa pieza, ambos ya congelados) × cantidad. La
+    // comisión de la vendedora se sigue calculando y restando igual que
+    // antes (sobre el valor CON IVA — eso no cambió, solo se corrigió la
+    // base de la utilidad para las socias).
+    utilidadReparto: (v) => {
+      const items = v.items || [];
+      const margenLineas = items.reduce(
+        (s, i) =>
+          s +
+          (Number(i.baseGravable) - Number(i.costoUnitario)) *
+            Number(i.cantidad),
+        0,
+      );
+      const subtotalConIva = items.reduce((s, i) => s + Number(i.subtotal), 0);
+      const comision = (subtotalConIva * Number(v.porcentajeComision)) / 100;
+      return margenLineas - comision;
+    },
     // ── Etiqueta de origen a nivel de venta — con 1 sola línea (el único
     // caso posible hoy para muestrario/cotización, ver "Fase 1" de la
     // conversación) se ve el origen real de esa línea; con varias líneas
@@ -106,6 +130,11 @@ export default {
   },
   VentaDetalle: {
     origenLabel: (d) => origenDeLinea(d),
+    // ── NUEVO (ronda 42) — margen de ESTA línea (precio sin IVA − costo
+    // de producir la pieza, ambos ya congelados) × cantidad. Informativo
+    // — es lo que suma `Venta.utilidadReparto` antes de restar comisión.
+    margen: (d) =>
+      (Number(d.baseGravable) - Number(d.costoUnitario)) * Number(d.cantidad),
   },
 
   Query: {
@@ -451,8 +480,12 @@ export default {
         );
       const cantidad = Number(input.cantidad);
       if (cantidad <= 0) throw new Error("La cantidad debe ser mayor a 0");
+      // ── CAMBIO (ronda 42) — se agrega `incCosteoProducto` para poder
+      // calcular y congelar el costo de producir esta pieza (necesario
+      // para la utilidad real que se reparte entre las socias).
       const producto = await prisma.producto.findUnique({
         where: { id: Number(input.productoId) },
+        include: incCosteoProducto,
       });
       if (!producto) throw new Error("Producto no existe");
       if (producto.enStock < cantidad)
@@ -469,6 +502,13 @@ export default {
         Number(input.precioVenta),
         pctIva,
       );
+      // ── NUEVO (ronda 42) — costo de producir la pieza, congelado con
+      // el costeo VIGENTE en este instante (ver costeoHelpers.js) — es
+      // la base para la utilidad real que se reparte entre las socias.
+      const { costoTotal: costoUnitario } = await calcularCostoProducto(
+        producto,
+        prisma,
+      );
       return prisma.$transaction(async (tx) => {
         await tx.producto.update({
           where: { id: Number(input.productoId) },
@@ -483,6 +523,7 @@ export default {
             subtotal,
             porcentajeIva: pctIva,
             baseGravable,
+            costoUnitario,
             valorIva,
             usu_creacion: user.codigo,
           },

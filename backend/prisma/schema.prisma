@@ -522,6 +522,16 @@ model VentaDetalle {
   porcentajeIva Decimal @default(19) @db.Decimal(5,2)
   baseGravable Decimal @default(0) @db.Decimal(12,2)
   valorIva Decimal @default(0) @db.Decimal(12,2)
+  // ── NUEVO (ronda 42) — costo de producir ESTA pieza (piedras+oro+mano
+  // de obra+empaques, ver Producto.costoTotal), CONGELADO en el momento
+  // exacto en que esta línea se creó — por unidad, igual que precioVenta.
+  // Es la base para calcular la utilidad real que se reparte entre las
+  // socias (baseGravable − costoUnitario, por línea) en vez del valor
+  // bruto de venta. Se congela por la misma razón que el IVA: el costo
+  // de un producto cambia con el tiempo (sobre todo el oro) — si se
+  // usara el costo de HOY para una venta ya cerrada, la utilidad
+  // repartida en su momento cambiaría sola cada vez que se mueva el oro.
+  costoUnitario Decimal @default(0) @db.Decimal(14,2)
   fec_creacion DateTime @default(now())
   usu_creacion String?
   fec_actualizacion DateTime @updatedAt

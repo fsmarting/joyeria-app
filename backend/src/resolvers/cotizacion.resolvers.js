@@ -1,6 +1,10 @@
 import { requireAuth } from "../utils/authHelpers.js";
 import { validarEmpresa } from "../utils/validations.js";
 import { calcularIvaDesglose } from "../utils/ivaHelpers.js";
+import {
+  calcularCostoProducto,
+  incCosteoProducto,
+} from "../utils/costeoHelpers.js";
 
 const cleanForUpdate = (obj) =>
   Object.fromEntries(
@@ -312,7 +316,13 @@ export default {
       const cotizacion = await prisma.cotizacion.findUnique({
         where: { id: cotizacionId },
         include: {
-          items: { where: { deletedAt: null }, include: { producto: true } },
+          items: {
+            where: { deletedAt: null },
+            // ── NUEVO (ronda 42) — se necesita el include de costeo
+            // (piedras/oro) para poder congelar `costoUnitario` en la
+            // VentaDetalle que se crea más abajo.
+            include: { producto: { include: incCosteoProducto } },
+          },
           estado: true,
         },
       });
@@ -409,6 +419,15 @@ export default {
             Number(item.precioUnitario),
             pctIvaVenta,
           );
+          // ── NUEVO (ronda 42) — mismo principio que el IVA arriba: el
+          // costo de producción se congela FRESCO en este instante (no se
+          // copia ningún valor de la cotización, porque la Cotización no
+          // trackea costo en absoluto). Es la base para calcular la
+          // utilidad real que se reparte entre las socias.
+          const { costoTotal: costoUnitario } = await calcularCostoProducto(
+            item.producto,
+            prisma,
+          );
           await tx.ventaDetalle.create({
             data: {
               ventaId: venta.id,
@@ -424,6 +443,7 @@ export default {
               porcentajeIva: pctIvaVenta,
               baseGravable,
               valorIva,
+              costoUnitario,
               usu_creacion: user.codigo,
             },
           });

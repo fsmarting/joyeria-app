@@ -1,6 +1,7 @@
 import { requireAuth } from "../utils/authHelpers.js";
 import { validarEmpresa } from "../utils/validations.js";
 import { calcularIvaDesglose } from "../utils/ivaHelpers.js";
+import { calcularCostoProducto } from "../utils/costeoHelpers.js";
 
 const incBom = {
   categoria: true,
@@ -31,37 +32,17 @@ const incBom = {
 const calcCosteoAsync = async (p, prisma) => {
   if (p.__costeo) return p.__costeo;
 
-  const piedras = p.piedras || [];
-  let costoPiedras = 0;
-  let costoOro = 0;
-
-  for (const pp of piedras) {
-    const esOro = pp.piedra?.tipo?.codigo === "ORO";
-    let costoUnitario = Number(pp.costoEstandardUnitario);
-
-    if (esOro) {
-      // ── CAMBIO — CompraInsumo ya no trae empresaId/fecha propios (ahora
-      // viven en su cabeza Compra, ver "deber ser" de separar cabeza/
-      // detalle en Compras de Insumos) — se filtra/ordena vía la relación
-      // `compra`, mismo criterio que piedra.resolvers.js.
-      const ultimoLote = await prisma.compraInsumo.findFirst({
-        where: {
-          piedraId: pp.piedraId,
-          deletedAt: null,
-          compra: { empresaId: p.empresaId, deletedAt: null },
-        },
-        orderBy: { compra: { fecha: "desc" } },
-      });
-      if (ultimoLote) costoUnitario = Number(ultimoLote.costoUnitario);
-    }
-
-    const totalLinea = Number(pp.cantidad) * costoUnitario;
-    costoPiedras += totalLinea;
-    if (esOro) costoOro += totalLinea;
-  }
-
-  const costoTotal =
-    costoPiedras + Number(p.costoManoObra) + Number(p.costoOtros);
+  // ── CAMBIO (ronda 42) — costoPiedras/costoOro/costoTotal ahora salen
+  // de la misma función compartida (`calcularCostoProducto`) que usan
+  // venta.resolvers.js / muestrario.resolvers.js / cotizacion.resolvers.js
+  // para CONGELAR el costo de cada línea de venta en su momento — antes
+  // esta lógica vivía solo aquí; duplicarla habría arriesgado que las dos
+  // copias se desincronizaran con el tiempo. El resultado es idéntico al
+  // de antes, esto es un refactor sin cambio de comportamiento.
+  const { costoPiedras, costoOro, costoTotal } = await calcularCostoProducto(
+    p,
+    prisma,
+  );
   const mult = Number(p.multiplicador ?? 2.25);
   const precioSugerido = Math.round(costoTotal * mult);
   // ── CAMBIO (ronda 39) — antes 1.19/0.19 fijos en el código; ahora usan

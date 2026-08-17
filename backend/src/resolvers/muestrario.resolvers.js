@@ -1,6 +1,10 @@
 import { requireAuth } from "../utils/authHelpers.js";
 import { validarEmpresa } from "../utils/validations.js";
 import { calcularIvaDesglose } from "../utils/ivaHelpers.js";
+import {
+  calcularCostoProducto,
+  incCosteoProducto,
+} from "../utils/costeoHelpers.js";
 
 // ── CAMBIO (ronda 34) — antes: ventas { ... cliente medioPago estado }
 // (la venta era 1 solo producto, así que esos campos vivían ahí mismo).
@@ -234,13 +238,15 @@ export default {
       } = input;
       const cantidad = Number(input.cantidad ?? 1);
       if (cantidad <= 0) throw new Error("La cantidad debe ser mayor a 0");
-      // ── CAMBIO (ronda 39) — se agrega `producto: true` para poder leer
-      // su porcentajeIva vigente y congelar el desglose de esta venta.
+      // ── CAMBIO (ronda 39/42) — se agrega `producto` con su costeo
+      // incluido, para poder leer su porcentajeIva vigente (congelar el
+      // desglose de IVA) y calcular su costoTotal vigente (congelar la
+      // utilidad real de esta línea para el reparto entre socias).
       const item = await prisma.muestrarioItem.findUnique({
         where: { id: muestrarioItemId },
         include: {
           muestrario: true,
-          producto: true,
+          producto: { include: incCosteoProducto },
           ventaDetalles: {
             where: {
               deletedAt: null,
@@ -304,6 +310,13 @@ export default {
         Number(precioVenta),
         pctIva,
       );
+      // ── NUEVO (ronda 42) — costo de producir la pieza, congelado con
+      // el costeo vigente en este instante — base para la utilidad real
+      // que se reparte entre las socias.
+      const { costoTotal: costoUnitario } = await calcularCostoProducto(
+        item.producto,
+        prisma,
+      );
 
       return prisma.$transaction(async (tx) => {
         const venta = await tx.venta.create({
@@ -330,6 +343,7 @@ export default {
             porcentajeIva: pctIva,
             baseGravable,
             valorIva,
+            costoUnitario,
             usu_creacion: user.codigo,
           },
         });
@@ -348,8 +362,11 @@ export default {
     },
 
     // ── MOVIDO (ronda 40) — confirmarVentaEfectivo se trasladó a
-    // venta.resolvers.js (misma lógica, sin cambios) para que cualquier
-    // venta la pueda usar, no solo las que salen de un muestrario.
+    // venta.resolvers.js (misma lógica exacta, sin cambios) para que
+    // cualquier venta la pueda usar (directa, por cotización o por
+    // muestrario), no solo las que salen de aquí. Muestrario.jsx sigue
+    // funcionando igual sin tocarlo — el nombre de la mutación en el
+    // servidor no cambió, solo el archivo del backend que la resuelve.
 
     liquidarMuestrario: async (_, { input }, { prisma, user }) => {
       requireAuth(user);

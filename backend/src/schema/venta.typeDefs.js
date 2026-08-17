@@ -39,6 +39,11 @@ export default /* GraphQL */ `
     valorTotal: Float!
     valorComision: Float!
     origenLabel: String
+    # ── NUEVO (ronda 42) — utilidad real a repartir entre las socias:
+    # suma de (baseGravable − costoUnitario) por línea, menos la comisión
+    # de la vendedora. Reemplaza el cálculo anterior (que usaba el valor
+    # bruto de la venta, con IVA incluido y sin descontar el costo).
+    utilidadReparto: Float!
   }
   type VentaDetalle {
     id: Int!
@@ -57,6 +62,12 @@ export default /* GraphQL */ `
     porcentajeIva: Float!
     baseGravable: Float!
     valorIva: Float!
+    # ── NUEVO (ronda 42) — costo de producción de esta pieza, congelado
+    # al momento en que se creó la línea (ver schema.prisma). margen es
+    # el valor calculado (baseGravable − costoUnitario) × cantidad,
+    # informativo por línea.
+    costoUnitario: Float!
+    margen: Float!
     producto: Producto
     venta: Venta
     cotizacionItem: CotizacionItem

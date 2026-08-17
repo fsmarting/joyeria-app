@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { useQuery, useMutation } from "@apollo/client";
 import { toast } from "react-toastify";
 import EntidadGenerica from "../../components/EntidadGenerica.jsx";
@@ -376,11 +376,38 @@ function RepartoPanel({ venta, refetch }) {
   const [repartos, setRepartos] = useState(initRepartos);
   const [guardar] = useMutation(GUARDAR_REPARTO);
 
+  // 🩹 FIX — cuando esta venta todavía NO tenía reparto guardado
+  // (venta.repartos vacío), initRepartos() se ejecuta UNA sola vez al
+  // montar el componente (así funciona useState con función), y en ese
+  // primer render `dataSocios` todavía no había llegado de la consulta
+  // (fetchPolicy: network-only siempre pide al servidor) — así que
+  // `socios` estaba vacío y `repartos` quedaba pegado en un array vacío
+  // para siempre, aunque las socias ya aparecieran en pantalla (esas se
+  // ven por el `|| { porcentaje: 0 }` de más abajo, que es solo un
+  // valor de repuesto para pintar, no hace parte del estado real). Por
+  // eso al escribir un % no se guardaba nada — updatePct mapeaba sobre
+  // ese array vacío y no tenía nada que actualizar, y "Guardar reparto"
+  // quedaba bloqueado porque el total siempre daba 0%. Este efecto
+  // reinicializa `repartos` en cuanto las socias por fin llegan, pero
+  // solo si todavía no hay nada real en el estado (no pisa lo que el
+  // usuario ya haya escrito).
+  useEffect(() => {
+    if (repartos.length === 0 && socios.length > 0) {
+      setRepartos(initRepartos());
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [socios.length]);
+
   const totalPct = repartos.reduce((s, r) => s + Number(r.porcentaje), 0);
   // ── CAMBIO (ronda 34) — el total de la venta ahora es la suma de
   // TODAS las líneas (venta.valorTotal, calculado en el servidor).
   const totalVenta = Number(venta.valorTotal);
-  const utilidad = totalVenta - Number(venta.valorComision);
+  // ── CAMBIO (ronda 42) — la utilidad a repartir entre socias ya NO es
+  // "valor bruto de venta − comisión" (eso ignoraba el costo de producir
+  // la pieza). Ahora se usa venta.utilidadReparto, calculado en el
+  // servidor sobre el MARGEN real: suma de (baseGravable − costoUnitario)
+  // por línea, menos la comisión de la vendedora.
+  const utilidad = Number(venta.utilidadReparto);
 
   const updatePct = (socioId, pct) => {
     setRepartos((prev) =>
