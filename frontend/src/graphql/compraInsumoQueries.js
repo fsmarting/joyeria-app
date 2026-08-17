@@ -86,9 +86,10 @@ export const ELIMINAR_ITEM_COMPRA = gql`
 // ── Sigue a nivel de detalle (los lotes con stock de un insumo) — lo
 // que ya usa OrdenProduccion para elegir de dónde enviar no cambia de
 // significado, solo trae numero/fecha anidados bajo `compra`.
+// ── CAMBIO (ronda 38) — $soloDisponibles opcional, ver typeDefs.
 export const GET_COMPRAS_POR_PIEDRA = gql`
-  query ComprasPorPiedra($piedraId: Int!) {
-    comprasPorPiedra(piedraId: $piedraId) {
+  query ComprasPorPiedra($piedraId: Int!, $soloDisponibles: Boolean) {
+    comprasPorPiedra(piedraId: $piedraId, soloDisponibles: $soloDisponibles) {
       id
       costoUnitario
       cantidadDisponible

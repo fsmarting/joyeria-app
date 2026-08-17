@@ -66,10 +66,14 @@ export default /* GraphQL */ `
     variacionCustodiaValor: Float!
   }
 
-  # ── NUEVO (ronda 36) — Ajustes de Inventario de Insumos (Mecanismo 2).
-  # Mismo patrón que AjusteInventario en producto.typeDefs.js, pero para
-  # insumo perdido estando todavía en la bodega de Río Rayo — nunca
-  # llegó a manos de ningún joyero. Solo soporta "PERDIDA" por ahora.
+  # ── NUEVO (ronda 36, ampliado ronda 38) — Ajustes de Inventario de
+  # Insumos (Mecanismo 2). Mismo patrón que AjusteInventario en
+  # producto.typeDefs.js, pero para insumo perdido/aparecido estando
+  # todavía en la bodega de Río Rayo — nunca llegó a manos de ningún
+  # joyero. tipoMovimiento: "PERDIDA" | "HALLAZGO" — en HALLAZGO
+  # (ronda 38, Opción A) el sobrante se atribuye a un lote YA EXISTENTE
+  # (compraInsumoId), usando su costo ya registrado — no crea un lote
+  # nuevo ni pide un costo a mano.
   type AjusteInsumo {
     id: Int!
     empresaId: Int!

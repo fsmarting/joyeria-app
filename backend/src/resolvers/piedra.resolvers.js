@@ -273,9 +273,12 @@ export default {
         }
       }
 
-      // 3. Ajustes de inventario de insumo (pérdida en bodega) — ronda 36,
-      // Mecanismo 2. Se valoriza con el costo REAL del lote afectado
-      // (mismo criterio de la ronda 33), no un costo estándar.
+      // 3. Ajustes de inventario de insumo (pérdida/hallazgo en bodega)
+      // — ronda 36, ampliado ronda 38 con "HALLAZGO". Se valoriza con el
+      // costo REAL del lote afectado (mismo criterio de la ronda 33), no
+      // un costo estándar — en HALLAZGO es el costo que YA tenía ese
+      // lote (Opción A acordada con el usuario: no se inventa un costo
+      // nuevo, se atribuye al lote existente).
       const ajustes = await prisma.ajusteInsumo.findMany({
         where: {
           piedraId: Number(piedraId),
@@ -288,17 +291,20 @@ export default {
         const cantidad = Number(a.cantidad);
         const costoUnitarioLote = Number(a.compraInsumo?.costoUnitario ?? 0);
         const valorAjuste = cantidad * costoUnitarioLote;
+        const esHallazgo = a.tipoMovimiento === "HALLAZGO";
         movimientos.push({
           fecha: a.fecha,
-          tipo: "Ajuste — pérdida en bodega",
+          tipo: esHallazgo
+            ? "Ajuste — hallazgo en bodega"
+            : "Ajuste — pérdida en bodega",
           referencia: a.numero,
           cantidad,
-          entradaStock: 0,
-          salidaStock: cantidad,
+          entradaStock: esHallazgo ? cantidad : 0,
+          salidaStock: esHallazgo ? 0 : cantidad,
           variacionCustodia: 0,
           joyero: null,
-          entradaValor: 0,
-          salidaValor: valorAjuste,
+          entradaValor: esHallazgo ? valorAjuste : 0,
+          salidaValor: esHallazgo ? 0 : valorAjuste,
           variacionCustodiaValor: 0,
         });
       }
@@ -366,14 +372,23 @@ export default {
       return true;
     },
 
-    // ── NUEVO (ronda 36) — Ajustes de Inventario de Insumos (Mecanismo
-    // 2, acordado con el usuario). Solo para insumo que se pierde
-    // estando TODAVÍA en la bodega de Río Rayo — nunca llegó a manos de
-    // ningún joyero (eso se resuelve aparte, con el Mecanismo 1 de
-    // entrada+salida en registrarEntregaOrden). Requiere elegir el lote
-    // (compraInsumoId) porque cada gramo/unidad disponible vive en un
-    // lote específico con su propio costo real. Solo soporta "PERDIDA"
-    // por ahora — el usuario no pidió "HALLAZGO" para insumos.
+    // ── NUEVO (ronda 36, ampliado ronda 38) — Ajustes de Inventario de
+    // Insumos (Mecanismo 2, acordado con el usuario). Solo para insumo
+    // que se pierde o aparece de más estando TODAVÍA en la bodega de Río
+    // Rayo — nunca llegó a manos de ningún joyero (eso se resuelve
+    // aparte, con el Mecanismo 1 de entrada+salida en
+    // registrarEntregaOrden). Requiere elegir el lote (compraInsumoId)
+    // porque cada gramo/unidad disponible vive en un lote específico con
+    // su propio costo real.
+    // ── CAMBIO (ronda 38) — se agrega "HALLAZGO" (antes solo "PERDIDA").
+    // Deber ser acordado con el usuario — Opción A: a diferencia de
+    // Producto (donde el hallazgo simplemente suma a un stock único sin
+    // costo por lote), aquí el hallazgo también se atribuye a un lote
+    // YA EXISTENTE (mismo selector que ya usaba Pérdida) y usa el costo
+    // que ya tiene registrado ese lote — no crea un lote nuevo ni pide
+    // un costo a mano. Aplica cuando se sabe/sospecha de qué compra vino
+    // el sobrante (ej. se recibieron 105g pero solo se registraron 100g
+    // en esa compra).
     crearAjusteInsumo: async (_, { input }, { prisma, user }) => {
       requireAuth(user);
       const {
@@ -385,9 +400,9 @@ export default {
         motivo,
       } = input;
       validarEmpresa(empresaId, user.empresaActualId);
-      if (tipoMovimiento !== "PERDIDA") {
+      if (!["PERDIDA", "HALLAZGO"].includes(tipoMovimiento)) {
         throw new Error(
-          "Tipo de movimiento inválido — hoy solo se soporta 'PERDIDA' para insumos",
+          "Tipo de movimiento inválido — debe ser 'PERDIDA' o 'HALLAZGO'",
         );
       }
       if (!motivo?.trim()) throw new Error("El motivo es obligatorio");
@@ -403,18 +418,23 @@ export default {
       if (compra.piedraId !== Number(piedraId)) {
         throw new Error("Ese lote no corresponde a este insumo");
       }
-      if (Number(compra.cantidadDisponible) < Number(cantidad)) {
+      if (
+        tipoMovimiento === "PERDIDA" &&
+        Number(compra.cantidadDisponible) < Number(cantidad)
+      ) {
         throw new Error(
           `No puede registrar una pérdida mayor a la cantidad disponible de ese lote. Disponible: ${compra.cantidadDisponible}`,
         );
       }
 
       const numero = await generarNumeroAjusteInsumo(prisma, Number(empresaId));
+      const delta =
+        tipoMovimiento === "HALLAZGO" ? Number(cantidad) : -Number(cantidad);
 
       return prisma.$transaction(async (tx) => {
         await tx.compraInsumo.update({
           where: { id: Number(compraInsumoId) },
-          data: { cantidadDisponible: { decrement: Number(cantidad) } },
+          data: { cantidadDisponible: { increment: delta } },
         });
         return tx.ajusteInsumo.create({
           data: {

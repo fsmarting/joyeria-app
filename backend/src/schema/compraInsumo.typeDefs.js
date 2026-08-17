@@ -85,7 +85,14 @@ export default /* GraphQL */ `
     obtenerCompras: [Compra!]!
     # Sigue a nivel de detalle (los lotes con stock de un insumo) — no
     # cambia lo que ya usa OrdenProduccion para elegir de dónde enviar.
-    comprasPorPiedra(piedraId: Int!): [CompraInsumo!]!
+    # ── NUEVO (ronda 38) — soloDisponibles (default true, no rompe a
+    # quien ya llama esta query sin el argumento): el selector de lote
+    # para "Ajustes de Insumo → Hallazgo" (Piedra.jsx) necesita poder
+    # elegir un lote con cantidadDisponible = 0 — es justo el caso más
+    # típico de un hallazgo (se creía agotado y apareció material
+    # sobrante). Pérdida y los demás usos (OrdenProduccion) siguen
+    # pidiendo solo lotes con stock, como siempre.
+    comprasPorPiedra(piedraId: Int!, soloDisponibles: Boolean): [CompraInsumo!]!
   }
   extend type Mutation {
     crearCompra(input: CompraInput!): Compra

@@ -696,7 +696,7 @@ model AjusteInsumo {
   piedraId Int
   compraInsumoId Int
   numero String @db.VarChar(20)
-  tipoMovimiento String @db.VarChar(20) // PERDIDA (único valor soportado hoy)
+  tipoMovimiento String @db.VarChar(20) // PERDIDA | HALLAZGO (ronda 38 — Opción A: el hallazgo también se atribuye a un lote existente)
   cantidad Decimal @db.Decimal(14,4)
   motivo String @db.VarChar(500)
   fecha DateTime @default(now())

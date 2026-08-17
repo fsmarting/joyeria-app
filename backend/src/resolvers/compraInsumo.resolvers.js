@@ -18,7 +18,8 @@ export default {
   Compra: {
     fecha: (c) => (c.fecha ? new Date(c.fecha).toISOString() : null),
     totalItems: (c) => (c.items || []).length,
-    valorTotal: (c) => (c.items || []).reduce((s, i) => s + Number(i.costoTotal), 0),
+    valorTotal: (c) =>
+      (c.items || []).reduce((s, i) => s + Number(i.costoTotal), 0),
   },
 
   Query: {
@@ -79,13 +80,21 @@ export default {
       });
     },
 
-    comprasPorPiedra: (_, { piedraId }, { prisma, user }) => {
+    // ── CAMBIO (ronda 38) — soloDisponibles default true (mismo
+    // comportamiento de siempre si no se manda) — en false, incluye
+    // también lotes con cantidadDisponible = 0 (ver comentario en el
+    // typeDefs: lo necesita el selector de Hallazgo en Piedra.jsx).
+    comprasPorPiedra: (
+      _,
+      { piedraId, soloDisponibles = true },
+      { prisma, user },
+    ) => {
       requireAuth(user);
       return prisma.compraInsumo.findMany({
         where: {
           piedraId: Number(piedraId),
           deletedAt: null,
-          cantidadDisponible: { gt: 0 },
+          ...(soloDisponibles ? { cantidadDisponible: { gt: 0 } } : {}),
           compra: { empresaId: user.empresaActualId, deletedAt: null },
         },
         orderBy: { compra: { fecha: "asc" } },
@@ -240,7 +249,9 @@ export default {
         where: { compraInsumoId: Number(id), deletedAt: null },
       });
       if (enUso > 0)
-        throw new Error("Este insumo ya tiene movimientos en órdenes de producción");
+        throw new Error(
+          "Este insumo ya tiene movimientos en órdenes de producción",
+        );
       await prisma.compraInsumo.update({
         where: { id: Number(id) },
         data: { deletedAt: new Date(), usu_actualizacion: user.codigo },

@@ -81,10 +81,14 @@ function calcularKardexInsumo(movimientos, saldoActualHoy, valorActualHoy) {
       porMes.set(key, {
         compras: 0,
         devoluciones: 0,
+        ajustes: 0,
         salidas: 0,
         comprasValor: 0,
         devolucionesValor: 0,
+        ajustesValor: 0,
         salidasValor: 0,
+        entradasTotal: 0,
+        entradasTotalValor: 0,
         anio: d.getFullYear(),
         mes: d.getMonth() + 1,
       });
@@ -97,6 +101,26 @@ function calcularKardexInsumo(movimientos, saldoActualHoy, valorActualHoy) {
       acc.devoluciones += m.entradaStock;
       acc.devolucionesValor += m.entradaValor;
     }
+    // ── NUEVO (ronda 38) — "Ajustes" agrupa Pérdida (negativo) y
+    // Hallazgo (positivo) en bodega, netos por mes — mismo tipo de
+    // columna informativa que Compras/Devoluciones, pero NO participa
+    // ella sola en el saldo (ver entradasTotal/salidas abajo, que son
+    // genéricos y sí lo garantizan matemáticamente correcto).
+    else if (m.tipo?.startsWith("Ajuste —")) {
+      acc.ajustes += m.entradaStock - m.salidaStock;
+      acc.ajustesValor += m.entradaValor - m.salidaValor;
+    }
+    // ── CAMBIO (ronda 38) — entradasTotal/salidas son SIEMPRE la suma
+    // cruda de entradaStock/salidaStock de TODOS los movimientos, sin
+    // importar el tipo — mismo criterio que ya se usaba para deducir
+    // saldoInicial más arriba. Antes "entradas" para el saldo del mes
+    // era solo compras+devoluciones; con Hallazgo apareciendo como una
+    // entrada de un tipo nuevo, esa cuenta se quedaba corta y el saldo
+    // mensual dejaba de cuadrar con piedra.stockDisponible (la verdad de
+    // hoy). Salidas ya era genérica desde la ronda 36 (por eso Pérdida
+    // nunca dio este problema, solo afecta a entradas).
+    acc.entradasTotal += m.entradaStock;
+    acc.entradasTotalValor += m.entradaValor;
     acc.salidas += m.salidaStock;
     acc.salidasValor += m.salidaValor;
   }
@@ -112,18 +136,21 @@ function calcularKardexInsumo(movimientos, saldoActualHoy, valorActualHoy) {
     {
       compras,
       devoluciones,
+      ajustes,
       salidas,
       comprasValor,
       devolucionesValor,
+      ajustesValor,
       salidasValor,
+      entradasTotal,
+      entradasTotalValor,
       anio,
       mes,
     },
   ] of meses) {
-    const entradas = compras + devoluciones;
-    const saldoActual = saldoAnterior + entradas - salidas;
-    const entradasValor = comprasValor + devolucionesValor;
-    const saldoActualValor = saldoAnteriorValor + entradasValor - salidasValor;
+    const saldoActual = saldoAnterior + entradasTotal - salidas;
+    const saldoActualValor =
+      saldoAnteriorValor + entradasTotalValor - salidasValor;
     const finDeMes = new Date(anio, mes, 0, 23, 59, 59);
     const movimientosDelPeriodo = movimientos.filter(
       (m) => new Date(m.fecha) <= finDeMes,
@@ -143,6 +170,7 @@ function calcularKardexInsumo(movimientos, saldoActualHoy, valorActualHoy) {
       saldoAnterior,
       compras,
       devoluciones,
+      ajustes,
       salidas,
       saldoActual,
       enPoderJoyeros,
@@ -159,15 +187,17 @@ function MovimientosInventarioInsumoPanel({ piedra, refetch }) {
   const [verDetalle, setVerDetalle] = useState(false);
   const unidad = piedra.unidad?.nombre || "";
 
-  // ── NUEVO (ronda 36) — Ajustes de Inventario de Insumos (Mecanismo 2).
-  // Mismo patrón que "+ Registrar ajuste" en Producto.jsx, con una
-  // diferencia real: aquí es obligatorio elegir el LOTE (compraInsumoId)
-  // porque cada lote de un insumo tiene su propio costo y disponibilidad
-  // — no existe un "stock único" como en Producto. Solo soporta "Pérdida
-  // en bodega" (ver crearAjusteInsumo en el backend): no se ofrece
-  // "Hallazgo" porque el usuario no lo pidió para insumos y no habría un
-  // lote/costo claro al cual atribuir un insumo encontrado.
+  // ── NUEVO (ronda 36, ampliado ronda 38) — Ajustes de Inventario de
+  // Insumos (Mecanismo 2). Mismo patrón que "+ Registrar ajuste" en
+  // Producto.jsx, con una diferencia real: aquí es obligatorio elegir el
+  // LOTE (compraInsumoId) porque cada lote de un insumo tiene su propio
+  // costo y disponibilidad — no existe un "stock único" como en
+  // Producto. Desde la ronda 38 soporta también "Hallazgo" (Opción A
+  // acordada con el usuario): el sobrante se atribuye a un lote YA
+  // EXISTENTE, con el costo que ese lote ya tiene registrado — no crea
+  // un lote nuevo ni pide un costo a mano.
   const [ajustando, setAjustando] = useState(false);
+  const [tipoAjuste, setTipoAjuste] = useState("PERDIDA");
   const [loteAjuste, setLoteAjuste] = useState("");
   const [cantidadAjuste, setCantidadAjuste] = useState("");
   const [motivoAjuste, setMotivoAjuste] = useState("");
@@ -178,22 +208,27 @@ function MovimientosInventarioInsumoPanel({ piedra, refetch }) {
   });
   const movimientos = data?.movimientosInventarioPiedra || [];
 
+  // ── CAMBIO (ronda 38) — en Hallazgo, el lote más típico a elegir es
+  // justo uno que ya quedó en 0 disponible (se creía agotado y apareció
+  // material sobrante) — soloDisponibles: false trae también esos lotes.
+  // En Pérdida sigue igual que siempre (solo lotes con stock).
   const { data: lotesData, refetch: refetchLotes } = useQuery(
     GET_COMPRAS_POR_PIEDRA,
     {
-      variables: { piedraId: piedra.id },
+      variables: {
+        piedraId: piedra.id,
+        soloDisponibles: tipoAjuste !== "HALLAZGO",
+      },
       fetchPolicy: "network-only",
       skip: !ajustando,
     },
   );
-  const lotes = (lotesData?.comprasPorPiedra || []).filter(
-    (l) => Number(l.cantidadDisponible) > 0,
-  );
+  const lotes = lotesData?.comprasPorPiedra || [];
   const [crearAjusteInsumo] = useMutation(CREAR_AJUSTE_INSUMO);
 
   const handleAjuste = async () => {
     if (!loteAjuste)
-      return toast.warning("Seleccione el lote donde ocurrió la pérdida");
+      return toast.warning("Seleccione el lote al que se atribuye el ajuste");
     if (!cantidadAjuste || Number(cantidadAjuste) <= 0)
       return toast.warning("Ingrese una cantidad válida");
     if (!motivoAjuste.trim()) return toast.warning("El motivo es obligatorio");
@@ -204,7 +239,7 @@ function MovimientosInventarioInsumoPanel({ piedra, refetch }) {
             empresaId: piedra.empresaId,
             piedraId: piedra.id,
             compraInsumoId: Number(loteAjuste),
-            tipoMovimiento: "PERDIDA",
+            tipoMovimiento: tipoAjuste,
             cantidad: Number(cantidadAjuste),
             motivo: motivoAjuste.trim(),
           },
@@ -212,6 +247,7 @@ function MovimientosInventarioInsumoPanel({ piedra, refetch }) {
       });
       toast.success("Ajuste registrado");
       setAjustando(false);
+      setTipoAjuste("PERDIDA");
       setLoteAjuste("");
       setCantidadAjuste("");
       setMotivoAjuste("");
@@ -279,11 +315,26 @@ function MovimientosInventarioInsumoPanel({ piedra, refetch }) {
       {ajustando && (
         <div className="border border-danger rounded p-2 mb-3 bg-light">
           <div className="text-muted mb-2" style={{ fontSize: 11 }}>
-            Pérdida en bodega — insumo que nunca llegó a manos de ningún joyero
-            (no confundir con lo que se pierde estando ya en poder de un joyero;
-            eso se resuelve aparte).
+            {tipoAjuste === "HALLAZGO"
+              ? "Hallazgo en bodega — apareció más insumo del que el sistema tiene registrado en ese lote (ej. un conteo físico). Se atribuye al lote existente, con su costo ya registrado."
+              : "Pérdida en bodega — insumo que nunca llegó a manos de ningún joyero (no confundir con lo que se pierde estando ya en poder de un joyero; eso se resuelve aparte)."}
           </div>
           <div className="d-flex flex-wrap gap-2 align-items-end">
+            <div>
+              <label className="form-label mb-0">Tipo</label>
+              <select
+                className="form-select form-select-sm"
+                style={{ width: 130 }}
+                value={tipoAjuste}
+                onChange={(e) => {
+                  setTipoAjuste(e.target.value);
+                  setLoteAjuste("");
+                }}
+              >
+                <option value="PERDIDA">Pérdida</option>
+                <option value="HALLAZGO">Hallazgo</option>
+              </select>
+            </div>
             <div>
               <label className="form-label mb-0">Lote</label>
               <select
@@ -324,12 +375,19 @@ function MovimientosInventarioInsumoPanel({ piedra, refetch }) {
               <input
                 type="text"
                 className="form-control form-control-sm"
-                placeholder="Ej: se extravió en bodega durante inventario"
+                placeholder={
+                  tipoAjuste === "HALLAZGO"
+                    ? "Ej: conteo físico encontró sobrante en ese lote"
+                    : "Ej: se extravió en bodega durante inventario"
+                }
                 value={motivoAjuste}
                 onChange={(e) => setMotivoAjuste(e.target.value)}
               />
             </div>
-            <button className="btn btn-danger btn-sm" onClick={handleAjuste}>
+            <button
+              className={`btn btn-sm ${tipoAjuste === "HALLAZGO" ? "btn-success" : "btn-danger"}`}
+              onClick={handleAjuste}
+            >
               Guardar ajuste
             </button>
           </div>
@@ -347,6 +405,7 @@ function MovimientosInventarioInsumoPanel({ piedra, refetch }) {
                 <th>Saldo Anterior</th>
                 <th>Compras</th>
                 <th>Devoluciones</th>
+                <th>Ajustes</th>
                 <th>Salidas</th>
                 <th>Saldo Actual</th>
                 <th>Valor Saldo Actual</th>
@@ -364,6 +423,24 @@ function MovimientosInventarioInsumoPanel({ piedra, refetch }) {
                   <td className="text-success">+{fmtQ(k.compras, unidad)}</td>
                   <td className="text-success">
                     +{fmtQ(k.devoluciones, unidad)}
+                  </td>
+                  {/* ── NUEVO (ronda 38) — Pérdida (negativo) / Hallazgo
+                      (positivo) en bodega, neto por mes. Título con
+                      tooltip porque, a diferencia de Compras/Devoluciones,
+                      este número puede ser + o - según lo que predomine. */}
+                  <td
+                    className={
+                      k.ajustes === 0
+                        ? "text-muted"
+                        : k.ajustes > 0
+                          ? "text-success"
+                          : "text-danger"
+                    }
+                    title="Positivo = hallazgo en bodega, Negativo = pérdida en bodega"
+                  >
+                    {k.ajustes === 0
+                      ? "—"
+                      : `${k.ajustes > 0 ? "+" : ""}${fmtQ(k.ajustes, unidad)}`}
                   </td>
                   <td className="text-danger">-{fmtQ(k.salidas, unidad)}</td>
                   <td className="fw-bold">{fmtQ(k.saldoActual, unidad)}</td>
