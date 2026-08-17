@@ -474,6 +474,11 @@ model Venta {
   fecha DateTime @default(now())
   porcentajeComision Decimal @db.Decimal(5,2)
   estadoId Int
+  // ── NUEVO (ronda 40) — fecha en que la venta pasó a ENTREGADA (cliente
+  // ya tiene la pieza en la mano). Null mientras no se haya entregado.
+  // Es puramente informativa/de auditoría — el cierre real de la venta
+  // lo determina `estado.codigo === 'ENTR'`, no este campo.
+  fechaEntrega DateTime?
   fec_creacion DateTime @default(now())
   usu_creacion String?
   fec_actualizacion DateTime @updatedAt

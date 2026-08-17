@@ -347,41 +347,9 @@ export default {
       });
     },
 
-    confirmarVentaEfectivo: async (_, { ventaId }, { prisma, user }) => {
-      requireAuth(user);
-      const venta = await prisma.venta.findUnique({
-        where: { id: Number(ventaId) },
-        include: { estado: true },
-      });
-      if (!venta) throw new Error("Venta no existe");
-      validarEmpresa(venta.empresaId, user.empresaActualId);
-      if (venta.estado?.codigo !== "ENPR")
-        throw new Error("Solo se pueden confirmar ventas EN PROCESO");
-      const estadoConf = await prisma.grupo.findFirst({
-        where: {
-          codigo: "CONF",
-          subcatalogo: { codigo: "ESTV", catalogo: { codigo: "VENT" } },
-        },
-      });
-      await prisma.venta.update({
-        where: { id: Number(ventaId) },
-        data: {
-          estadoId: estadoConf.id,
-          usu_actualizacion: user.codigo,
-          version: { increment: 1 },
-        },
-      });
-      return prisma.venta.findUnique({
-        where: { id: Number(ventaId) },
-        include: {
-          cliente: true,
-          vendedora: true,
-          medioPago: true,
-          estado: true,
-          repartos: true,
-        },
-      });
-    },
+    // ── MOVIDO (ronda 40) — confirmarVentaEfectivo se trasladó a
+    // venta.resolvers.js (misma lógica, sin cambios) para que cualquier
+    // venta la pueda usar, no solo las que salen de un muestrario.
 
     liquidarMuestrario: async (_, { input }, { prisma, user }) => {
       requireAuth(user);

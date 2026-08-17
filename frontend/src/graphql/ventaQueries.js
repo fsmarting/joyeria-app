@@ -13,7 +13,7 @@ const ITEM_FIELDS = `
 
 const VENTA_FIELDS = `
   id empresaId numero clienteId vendedoraId canalId medioPagoId fecha
-  porcentajeComision estadoId version
+  porcentajeComision estadoId version fechaEntrega
   totalItems valorTotal valorComision origenLabel
   cliente   { id nombre telefono }
   vendedora { id nombre }
@@ -89,6 +89,37 @@ export const ANULAR_VENTA = gql`
         codigo
         nombre
       }
+    }
+  }
+`;
+
+// ── NUEVO (ronda 40) — cierre del ciclo de vida: En proceso → Confirmada
+// → Entregada. confirmarVentaEfectivo ya existía en el backend pero solo
+// tenía botón desde Muestrario — este export la deja disponible también
+// desde la página de Ventas (misma mutación del servidor, sin cambios).
+export const CONFIRMAR_VENTA_EFECTIVO = gql`
+  mutation ConfirmarVentaEfectivoVenta($ventaId: Int!) {
+    confirmarVentaEfectivo(ventaId: $ventaId) {
+      id
+      version
+      estado {
+        codigo
+        nombre
+      }
+    }
+  }
+`;
+
+export const ENTREGAR_VENTA = gql`
+  mutation EntregarVenta($id: Int!, $version: Int!) {
+    entregarVenta(id: $id, version: $version) {
+      id
+      version
+      estado {
+        codigo
+        nombre
+      }
+      fechaEntrega
     }
   }
 `;

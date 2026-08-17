@@ -15,6 +15,8 @@ import {
   ANULAR_VENTA,
   GUARDAR_REPARTO,
   OBTENER_SOCIOS,
+  CONFIRMAR_VENTA_EFECTIVO,
+  ENTREGAR_VENTA,
 } from "../../graphql/ventaQueries.js";
 
 const fmt = (n) =>
@@ -27,7 +29,11 @@ const fmt = (n) =>
 // cotización convertida no se pueden editar/quitar desde aquí (mismo
 // bloqueo que ya aplica el backend en eliminarItemVenta) — se anula la
 // venta completa si hace falta revertirlas.
-function ItemRow({ item, onActualizar, onEliminar }) {
+// ── CAMBIO (ronda 40) — se agrega `puedeEditar` (true solo mientras la
+// venta sigue "En proceso" — ver "deber ser": en cuanto se confirma el
+// pago, la venta se cierra para cambios de línea, mismo bloqueo que ya
+// aplica el backend en agregar/actualizar/eliminarItemVenta).
+function ItemRow({ item, puedeEditar, onActualizar, onEliminar }) {
   const [edit, setEdit] = useState(false);
   const [form, setForm] = useState({
     cantidad: item.cantidad,
@@ -92,6 +98,14 @@ function ItemRow({ item, onActualizar, onEliminar }) {
             className="text-muted"
             style={{ fontSize: 11 }}
             title="Viene de un muestrario o cotización — anule la venta completa para revertirla"
+          >
+            🔒
+          </span>
+        ) : !puedeEditar ? (
+          <span
+            className="text-muted"
+            style={{ fontSize: 11 }}
+            title="Esta venta ya no está en proceso — cree una venta nueva para agregar/cambiar productos"
           >
             🔒
           </span>
@@ -164,7 +178,11 @@ function VentaPanel({ venta, refetch }) {
   const [eliminar] = useMutation(ELIMINAR_ITEM_VENTA);
 
   const items = venta.items || [];
-  const esAnulada = venta.estado?.codigo === "ANUL";
+  // ── CAMBIO (ronda 40) — antes solo distinguía "anulada" de todo lo
+  // demás. Ahora se agregar/editar/quitar productos solo mientras la
+  // venta sigue "En proceso" (ver "deber ser" — una vez confirmado el
+  // pago, la venta se cierra para nuevas líneas).
+  const enProceso = venta.estado?.codigo === "ENPR";
 
   const handleAgregar = async () => {
     if (!selectedProductoId || !cantidad || !precioVenta)
@@ -246,6 +264,7 @@ function VentaPanel({ venta, refetch }) {
               <ItemRow
                 key={it.id}
                 item={it}
+                puedeEditar={enProceso}
                 onActualizar={handleActualizar}
                 onEliminar={handleEliminar}
               />
@@ -259,7 +278,18 @@ function VentaPanel({ venta, refetch }) {
         </div>
       )}
 
-      {!esAnulada && (
+      {!enProceso && (
+        <div
+          className="alert alert-secondary py-2 mb-0"
+          style={{ fontSize: 12 }}
+        >
+          🔒 Esta venta ya no está en proceso — no se le pueden agregar más
+          productos.
+          {venta.estado?.codigo !== "ANUL" &&
+            " Si el cliente quiere algo más, créele una venta nueva."}
+        </div>
+      )}
+      {enProceso && (
         <div className="border rounded p-2 bg-white" style={{ fontSize: 12 }}>
           <div className="fw-bold mb-2">+ Agregar producto a esta venta</div>
           <div className="d-flex flex-wrap gap-2 align-items-end">
@@ -439,6 +469,97 @@ function RepartoPanel({ venta, refetch }) {
   );
 }
 
+// ── NUEVO (ronda 40) — cierre del ciclo de vida de la venta: "En
+// proceso" → "Confirmada" (ya verificó que le pagaron) → "Entregada" (el
+// cliente ya tiene la pieza — venta cerrada). Es secuencial a propósito:
+// no se puede entregar sin haber confirmado el pago primero (control
+// interno básico en mercancía de alto valor — ver "deber ser" acordado).
+// Tarjeta ya nace en Confirmada (se liquida al instante), así que este
+// panel solo le muestra el botón que le toca según en qué paso va.
+function EstadoVentaPanel({ venta, refetch }) {
+  const [confirmar, { loading: confirmando }] = useMutation(
+    CONFIRMAR_VENTA_EFECTIVO,
+  );
+  const [entregar, { loading: entregando }] = useMutation(ENTREGAR_VENTA);
+
+  const handleConfirmar = async () => {
+    try {
+      await confirmar({ variables: { ventaId: venta.id } });
+      toast.success("Pago confirmado");
+      await refetch();
+    } catch (e) {
+      toast.error(e.message);
+    }
+  };
+
+  const handleEntregar = async () => {
+    if (
+      !window.confirm("¿Confirma que el cliente ya se está llevando la pieza?")
+    )
+      return;
+    try {
+      await entregar({ variables: { id: venta.id, version: venta.version } });
+      toast.success("Venta entregada — queda cerrada");
+      await refetch();
+    } catch (e) {
+      toast.error(e.message);
+    }
+  };
+
+  if (venta.estado?.codigo === "ENPR") {
+    return (
+      <div
+        className="alert alert-warning py-2 mb-0 d-flex justify-content-between align-items-center flex-wrap gap-2"
+        style={{ fontSize: 12 }}
+      >
+        <span>
+          💰 Pago pendiente de confirmar (efectivo/transferencia sin verificar
+          todavía).
+        </span>
+        <button
+          className="btn btn-success btn-sm"
+          onClick={handleConfirmar}
+          disabled={confirmando}
+        >
+          {confirmando ? "⏳ Confirmando..." : "✓ Confirmar pago"}
+        </button>
+      </div>
+    );
+  }
+
+  if (venta.estado?.codigo === "CONF") {
+    return (
+      <div
+        className="alert alert-primary py-2 mb-0 d-flex justify-content-between align-items-center flex-wrap gap-2"
+        style={{ fontSize: 12 }}
+      >
+        <span>✓ Pago confirmado — falta entregarle la pieza al cliente.</span>
+        <button
+          className="btn btn-success btn-sm"
+          onClick={handleEntregar}
+          disabled={entregando}
+        >
+          {entregando ? "⏳ Entregando..." : "📦 Marcar como entregada"}
+        </button>
+      </div>
+    );
+  }
+
+  if (venta.estado?.codigo === "ENTR") {
+    return (
+      <div className="alert alert-success py-2 mb-0" style={{ fontSize: 12 }}>
+        📦 Entregada
+        {venta.fechaEntrega
+          ? ` el ${new Date(Number(venta.fechaEntrega)).toLocaleDateString("es-CO")}`
+          : ""}{" "}
+        — venta cerrada.
+      </div>
+    );
+  }
+
+  return null; // ANUL — no aplica, AnularVentaPanel ya muestra su propio aviso.
+}
+
 // ── NUEVO — panel de anulación, mismo patrón que "Cerrar orden (entrega
 // parcial)" en Órdenes de Producción: acción dedicada + motivo obligatorio.
 function AnularVentaPanel({ venta, refetch }) {
@@ -472,6 +593,18 @@ function AnularVentaPanel({ venta, refetch }) {
     return (
       <div className="alert alert-secondary py-2 mb-0" style={{ fontSize: 12 }}>
         🚫 Esta venta está anulada.
+      </div>
+    );
+  }
+
+  // ── NUEVO (ronda 40) — una vez entregada, ya no se puede anular (el
+  // stock ya no está físicamente aquí para restaurarlo) — ver "deber
+  // ser" acordado. Una devolución real es un proceso aparte.
+  if (venta.estado?.codigo === "ENTR") {
+    return (
+      <div className="alert alert-secondary py-2 mb-0" style={{ fontSize: 12 }}>
+        📦 Esta venta ya fue entregada — no se puede anular. Si el cliente hizo
+        una devolución, gestiónela por otro proceso.
       </div>
     );
   }
@@ -526,6 +659,9 @@ function AnularVentaPanel({ venta, refetch }) {
 function VentaDetalle({ venta, refetch }) {
   return (
     <>
+      <div className="p-3 bg-light border-top">
+        <EstadoVentaPanel venta={venta} refetch={refetch} />
+      </div>
       <VentaPanel venta={venta} refetch={refetch} />
       {venta.estado?.codigo !== "ANUL" && (
         <RepartoPanel venta={venta} refetch={refetch} />

@@ -98,7 +98,10 @@ export default /* GraphQL */ `
     agregarItemMuestrario(input: MuestrarioItemInput!): MuestrarioItem!
     eliminarItemMuestrario(id: Int!): Boolean!
     registrarVentaMuestrario(input: VentaMuestrarioInput!): Venta!
-    confirmarVentaEfectivo(ventaId: Int!): Venta!
+    # ── MOVIDO (ronda 40) — confirmarVentaEfectivo ahora vive en
+    # venta.typeDefs.js (ya no es exclusivo de ventas por muestrario; ver
+    # comentario ahí). El frontend de Muestrario.jsx sigue funcionando
+    # igual — solo cambió en qué archivo del backend vive el resolver.
     liquidarMuestrario(input: LiquidarMuestrarioInput!): Muestrario!
   }
 `;

@@ -136,15 +136,22 @@ export const camposVenta = [
     soloListado: true,
     ancho: "120px",
     ordenListado: 9,
+    // ── CAMBIO (ronda 40) — se agrega ENTR ("Entregada", el cierre real
+    // del ciclo — cliente ya tiene la pieza). CONF cambia de verde a azul
+    // porque ya no es el estado "final": ahora verde queda reservado para
+    // Entregada, y Confirmada (pago verificado, pieza aún sin entregar)
+    // se ve como un paso intermedio, no como el punto de llegada.
     render: (f) => {
       const c =
-        f.estado?.codigo === "CONF"
+        f.estado?.codigo === "ENTR"
           ? "success"
-          : f.estado?.codigo === "ENPR"
-            ? "warning"
-            : f.estado?.codigo === "ANUL"
-              ? "danger"
-              : "secondary";
+          : f.estado?.codigo === "CONF"
+            ? "primary"
+            : f.estado?.codigo === "ENPR"
+              ? "warning"
+              : f.estado?.codigo === "ANUL"
+                ? "danger"
+                : "secondary";
       return <span className={`badge bg-${c}`}>{f.estado?.nombre ?? "-"}</span>;
     },
   },

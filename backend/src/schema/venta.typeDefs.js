@@ -23,6 +23,9 @@ export default /* GraphQL */ `
     porcentajeComision: Float!
     estadoId: Int!
     version: Int!
+    # ── NUEVO (ronda 40) — fecha en que se marcó como Entregada. Null
+    # mientras no se haya entregado.
+    fechaEntrega: String
     cliente: Tercero
     vendedora: Usuario
     canal: Grupo
@@ -134,5 +137,12 @@ export default /* GraphQL */ `
     ): [RepartoUtilidad!]!
     # ── NUEVO — anular con motivo obligatorio, restaura enStock automáticamente.
     anularVenta(id: Int!, version: Int!, motivo: String!): Venta!
+    # ── MOVIDO (ronda 40) — antes vivía en muestrario.typeDefs.js, solo
+    # tenía botón desde Muestrario. Pasa la venta de "En proceso" (pago
+    # sin confirmar) a "Confirmada" (pago ya verificado).
+    confirmarVentaEfectivo(ventaId: Int!): Venta!
+    # ── NUEVO (ronda 40) — cierra la venta: pasa de "Confirmada" a
+    # "Entregada" (el cliente ya tiene la pieza). Solo válido desde CONF.
+    entregarVenta(id: Int!, version: Int!): Venta!
   }
 `;

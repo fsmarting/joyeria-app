@@ -241,10 +241,20 @@ export default {
       requireAuth(user);
       const original = await prisma.venta.findUnique({
         where: { id: Number(id) },
-        include: { items: { where: { deletedAt: null } } },
+        include: { estado: true, items: { where: { deletedAt: null } } },
       });
       if (!original) throw new Error("No existe");
       validarEmpresa(original.empresaId, user.empresaActualId);
+      // ── NUEVO (ronda 40) — una vez la venta tiene pago confirmado o ya
+      // fue entregada, borrarla de un tajo (sin dejar rastro, sin motivo)
+      // es demasiado peligroso — se usa anularVenta en su lugar (exige
+      // motivo, deja historial visible). Solo se puede eliminar así una
+      // venta que sigue "En proceso" (un borrador sin cerrar) o una que
+      // ya está Anulada (limpieza de un registro que no debe seguir ahí).
+      if (!["ENPR", "ANUL"].includes(original.estado?.codigo))
+        throw new Error(
+          "Esta venta ya tiene el pago confirmado o fue entregada — no se puede eliminar directamente. Use 'Anular venta' si necesita revertirla.",
+        );
       await prisma.$transaction(async (tx) => {
         // ── CAMBIO (ronda 34) — antes restauraba el stock de UN producto;
         // ahora recorre todas las líneas de la venta, igual que eliminarCompra.
@@ -282,6 +292,14 @@ export default {
       validarEmpresa(venta.empresaId, user.empresaActualId);
       if (venta.estado?.codigo === "ANUL")
         throw new Error("Esta venta ya está anulada");
+      // ── NUEVO (ronda 40) — una vez el cliente ya se llevó la pieza, no
+      // se puede "anular" como si nada hubiera pasado (el stock ya no
+      // está físicamente aquí para restaurarlo). Si hay una devolución
+      // real, eso es un proceso aparte que este sistema todavía no maneja.
+      if (venta.estado?.codigo === "ENTR")
+        throw new Error(
+          "Esta venta ya fue entregada — no se puede anular. Si el cliente hizo una devolución, gestiónela por un proceso aparte.",
+        );
 
       const estadoAnul = await prisma.grupo.findFirst({
         where: {
@@ -322,6 +340,96 @@ export default {
       });
     },
 
+    // ── NUEVO (ronda 40) — "deber ser" acordado con el usuario: el pago
+    // se confirma ANTES de entregar la pieza, nunca al revés (control
+    // interno básico en mercancía de alto valor). Este mutation cierra
+    // ese paso: efectivo/transferencia queda en ENPR al crearse la venta
+    // porque el dinero todavía no está verificado — cuando el usuario
+    // confirma que sí llegó (contó el efectivo, revisó el banco), pasa a
+    // CONF. Tarjeta ya nace en CONF (se liquida al instante), así que no
+    // necesita pasar por aquí.
+    // ── MOVIDO (ronda 40) — antes vivía en muestrario.resolvers.js /
+    // muestrario.typeDefs.js. Ya funcionaba correctamente pero solo tenía
+    // botón en la página de Muestrario, así que una venta directa o por
+    // cotización pagada en efectivo se quedaba en ENPR sin ninguna forma
+    // de confirmarla. Es la misma mutación, sin cambios de lógica — solo
+    // cambia de casa para que la pueda usar cualquier venta.
+    confirmarVentaEfectivo: async (_, { ventaId }, { prisma, user }) => {
+      requireAuth(user);
+      const venta = await prisma.venta.findUnique({
+        where: { id: Number(ventaId) },
+        include: { estado: true },
+      });
+      if (!venta) throw new Error("Venta no existe");
+      validarEmpresa(venta.empresaId, user.empresaActualId);
+      if (venta.estado?.codigo !== "ENPR")
+        throw new Error("Solo se pueden confirmar ventas EN PROCESO");
+      const estadoConf = await prisma.grupo.findFirst({
+        where: {
+          codigo: "CONF",
+          subcatalogo: { codigo: "ESTV", catalogo: { codigo: "VENT" } },
+        },
+      });
+      if (!estadoConf) throw new Error("Estado CONF no encontrado en catálogo");
+      await prisma.venta.update({
+        where: { id: Number(ventaId) },
+        data: {
+          estadoId: estadoConf.id,
+          usu_actualizacion: user.codigo,
+          version: { increment: 1 },
+        },
+      });
+      return prisma.venta.findUnique({
+        where: { id: Number(ventaId) },
+        include: incVenta,
+      });
+    },
+
+    // ── NUEVO (ronda 40) — cierra el ciclo de vida de la venta: el
+    // cliente ya tiene la pieza en la mano. Solo se puede llegar aquí
+    // desde CONF (pago ya confirmado) — nunca directo desde ENPR, porque
+    // "fiar" la pieza sin haber verificado el pago es justo el riesgo que
+    // este control busca evitar. No mueve stock (ya se descontó cuando la
+    // línea se agregó a la venta) — solo registra que la venta quedó
+    // cerrada y en qué fecha se hizo la entrega física.
+    entregarVenta: async (_, { id, version }, { prisma, user }) => {
+      requireAuth(user);
+      const venta = await prisma.venta.findUnique({
+        where: { id: Number(id) },
+        include: { estado: true },
+      });
+      if (!venta) throw new Error("Venta no existe");
+      validarEmpresa(venta.empresaId, user.empresaActualId);
+      if (venta.estado?.codigo !== "CONF")
+        throw new Error(
+          "Solo se puede entregar una venta con el pago ya confirmado. Confirme el pago primero.",
+        );
+      const estadoEntr = await prisma.grupo.findFirst({
+        where: {
+          codigo: "ENTR",
+          subcatalogo: { codigo: "ESTV", catalogo: { codigo: "VENT" } },
+        },
+      });
+      if (!estadoEntr)
+        throw new Error(
+          "Estado ENTR no encontrado en catálogo — cree el Grupo 'Entregada' (código ENTR) en Admin → SubCatálogos → Grupos, dentro del catálogo VENT / subcatálogo ESTV.",
+        );
+      const result = await prisma.venta.updateMany({
+        where: { id: Number(id), version: Number(version) },
+        data: {
+          estadoId: estadoEntr.id,
+          fechaEntrega: new Date(),
+          version: { increment: 1 },
+          usu_actualizacion: user.codigo,
+        },
+      });
+      if (result.count === 0) throw new Error("Modificado por otro usuario");
+      return prisma.venta.findUnique({
+        where: { id: Number(id) },
+        include: incVenta,
+      });
+    },
+
     // ── NUEVO (ronda 34) — agregar un producto a una venta ya creada,
     // mismo patrón que agregarItemCompra. Valida y descuenta stock igual
     // que antes hacía crearVenta.
@@ -333,9 +441,13 @@ export default {
       });
       if (!venta) throw new Error("Venta no existe");
       validarEmpresa(venta.empresaId, user.empresaActualId);
-      if (venta.estado?.codigo === "ANUL")
+      // ── CAMBIO (ronda 40) — antes solo bloqueaba en ANUL. "Deber ser"
+      // acordado: en cuanto se confirma el pago, esa venta se cierra para
+      // nuevas líneas — si el cliente quiere algo más, es una venta
+      // nueva, para que nunca quede la duda de cuánto falta por cobrar.
+      if (venta.estado?.codigo !== "ENPR")
         throw new Error(
-          "Esta venta está anulada — no se le pueden agregar productos",
+          "Esta venta ya no está en proceso (pago confirmado, entregada o anulada) — cree una venta nueva para agregar más productos.",
         );
       const cantidad = Number(input.cantidad);
       if (cantidad <= 0) throw new Error("La cantidad debe ser mayor a 0");
@@ -388,8 +500,12 @@ export default {
       });
       if (!original) throw new Error("Línea de venta no existe");
       validarEmpresa(original.venta.empresaId, user.empresaActualId);
-      if (original.venta.estado?.codigo === "ANUL")
-        throw new Error("Esta venta está anulada y no se puede modificar");
+      // ── CAMBIO (ronda 40) — mismo criterio que agregarItemVenta: solo
+      // se puede editar una línea mientras la venta sigue "En proceso".
+      if (original.venta.estado?.codigo !== "ENPR")
+        throw new Error(
+          "Esta venta ya no está en proceso (pago confirmado, entregada o anulada) y no se puede modificar.",
+        );
       const nuevaCantidad = Number(cantidad);
       if (nuevaCantidad <= 0) throw new Error("La cantidad debe ser mayor a 0");
       const subtotal = nuevaCantidad * Number(precioVenta);
@@ -444,10 +560,18 @@ export default {
       requireAuth(user);
       const original = await prisma.ventaDetalle.findUnique({
         where: { id: Number(id) },
-        include: { venta: true },
+        include: { venta: { include: { estado: true } } },
       });
       if (!original) throw new Error("No existe");
       validarEmpresa(original.venta.empresaId, user.empresaActualId);
+      // ── NUEVO (ronda 40) — antes no tenía NINGÚN control de estado
+      // (se podía borrar una línea de una venta ya pagada sin que quedara
+      // rastro). Mismo criterio que agregar/actualizar: solo mientras
+      // sigue "En proceso".
+      if (original.venta.estado?.codigo !== "ENPR")
+        throw new Error(
+          "Esta venta ya no está en proceso (pago confirmado, entregada o anulada) — no se pueden quitar productos.",
+        );
       // ── NUEVO (ronda 34) — una línea que vino de vender un ítem de
       // muestrario o de convertir una cotización no se debe quitar desde
       // aquí (dejaría esos flujos desincronizados) — se anula la venta
