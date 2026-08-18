@@ -142,6 +142,7 @@ const ALLOWED_INPUT = {
   ],
   muestrario: ["empresaId", "vendedoraId", "fechaSalida", "nota", "version"],
   metamensual: [
+    "empresaId",
     "anio",
     "mes",
     "metaIngresos",
@@ -244,7 +245,14 @@ const NUMERIC_FIELDS = {
     "version",
   ],
   muestrario: ["empresaId", "vendedoraId", "version"],
-  metamensual: ["anio", "mes", "metaIngresos", "metaVentas", "version"],
+  metamensual: [
+    "empresaId",
+    "anio",
+    "mes",
+    "metaIngresos",
+    "metaVentas",
+    "version",
+  ],
   cotizacion: [
     "empresaId",
     "clienteId",
