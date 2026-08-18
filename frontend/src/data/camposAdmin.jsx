@@ -360,7 +360,7 @@ export const camposGrupo = [
     nombre: "subcatalogo.nombre",
     etiqueta: "Nombre SubCatálogo",
     tipo: "texto",
-    ancho: "180px",
+    ancho: "220px",
     soloListado: true,
     ordenListado: 4,
   },
