@@ -35,9 +35,13 @@ const ALLOWED_INPUT = {
     "metaMensual",
     "version",
   ],
+  // ── CAMBIO (ronda 46) — "tipoId" se retira (un tercero ya no tiene un
+  // tipo único). "rolId" es el rol CON EL QUE NACE el tercero (Cliente/
+  // Joyero/Proveedor/Socio) — solo aplica al CREAR, ver la exclusión en
+  // buildInput() más abajo para isUpdate.
   tercero: [
     "empresaId",
-    "tipoId",
+    "rolId",
     "tipoDocumentoId",
     "numeroDocumento",
     "nombre",
@@ -188,9 +192,10 @@ const NUMERIC_FIELDS = {
     "metaMensual",
     "version",
   ],
+  // ── CAMBIO (ronda 46) — "tipoId" → "rolId" (ver ALLOWED_INPUT.tercero).
   tercero: [
     "empresaId",
-    "tipoId",
+    "rolId",
     "tipoDocumentoId",
     "tierId",
     "canalId",
@@ -311,6 +316,9 @@ export function buildInput({ form, entity, isUpdate }) {
     "porcentajeComision",
     "valorComision",
     "especialidades",
+    // ── NUEVO (ronda 46) — "roles" es un campo calculado/relación (lo
+    // que devuelve el servidor), nunca algo que se reenvíe como input.
+    "roles",
     "nombreMes",
     "fec_creacion",
     "fec_actualizacion",
@@ -347,6 +355,14 @@ export function buildInput({ form, entity, isUpdate }) {
 
   if (isUpdate && clean.id != null) base.id = Number(clean.id);
   if (entity === "usuario" && isUpdate && !base.password) delete base.password;
+  // ── NUEVO (ronda 46) — "rolId" solo existe en TerceroInput (el rol con
+  // el que nace el tercero al crearlo). TerceroUpdateInput NO lo acepta
+  // — los roles se agregan/quitan aparte con agregarRolTercero /
+  // removerRolTercero (panel "Roles" en Tercero.jsx). Si no se quita
+  // aquí, actualizar cualquier dato de un tercero YA EXISTENTE (nombre,
+  // teléfono, etc.) fallaría con "Field rolId is not defined by type
+  // TerceroUpdateInput".
+  if (entity === "tercero" && isUpdate) delete base.rolId;
 
   // ── Limpiar nulls en UPDATE ────────────────────────────────────
   // Prisma rechaza null en campos de relación en updateMany.
