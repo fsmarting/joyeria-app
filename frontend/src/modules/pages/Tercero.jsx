@@ -12,6 +12,9 @@ import {
   AGREGAR_ESPECIALIDAD_TERCERO,
   REMOVER_ESPECIALIDAD_TERCERO,
   ACTUALIZAR_NIVEL_ESP_TERCERO,
+  // ── NUEVO (ronda 46) — roles múltiples
+  AGREGAR_ROL_TERCERO,
+  REMOVER_ROL_TERCERO,
 } from "../../graphql/terceroQueries.js";
 
 const NIVELES = ["Experto", "Intermedio", "Básico"];
@@ -171,6 +174,103 @@ function EspecialidadesPanel({ tercero, refetch }) {
   );
 }
 
+// ── NUEVO (ronda 46) — Panel de roles múltiples, disponible para
+// CUALQUIER tercero (Clienta, Joyero, Proveedor o Socia). Mismo patrón
+// visual que EspecialidadesPanel, pero contra el catálogo GRAL/TTRC (los
+// mismos 4 valores: Cliente, Joyero, Proveedor, Socio) en vez de
+// PRODU/ESPE. Reemplaza el antiguo campo único "tipoId": aquí es donde
+// se le agrega a alguien un rol adicional sin duplicar su ficha — por
+// ejemplo, un Joyero que además empieza a comprar como Clienta.
+function RolesPanel({ tercero, refetch }) {
+  const [rolId, setRolId] = useState("");
+
+  const { data: dataRoles } = useQuery(GET_GRUPOS_POR_CODIGOS, {
+    variables: { catalogoCodigo: "GRAL", subcatalogoCodigo: "TTRC" },
+    fetchPolicy: "network-only",
+  });
+  const roles = dataRoles?.gruposPorCodigos || [];
+  const idsActuales = (tercero.roles || []).map((r) => r.rolId);
+  const disponibles = roles.filter((g) => !idsActuales.includes(g.id));
+
+  const [agregar] = useMutation(AGREGAR_ROL_TERCERO);
+  const [remover] = useMutation(REMOVER_ROL_TERCERO);
+
+  const handleAgregar = async () => {
+    if (!rolId) return toast.warning("Seleccione un rol");
+    try {
+      await agregar({
+        variables: {
+          input: { terceroId: tercero.id, rolId: Number(rolId) },
+        },
+      });
+      toast.success("Rol agregado");
+      setRolId("");
+      await refetch();
+    } catch (e) {
+      toast.error(e.message);
+    }
+  };
+
+  const handleRemover = async (rId) => {
+    if (!window.confirm("¿Quitar este rol?")) return;
+    try {
+      await remover({ variables: { terceroId: tercero.id, rolId: rId } });
+      toast.success("Rol removido");
+      await refetch();
+    } catch (e) {
+      toast.error(e.message);
+    }
+  };
+
+  return (
+    <div className="p-3 bg-light border-top">
+      <strong style={{ fontSize: 13 }}>Roles de {tercero.nombre}</strong>
+      <div className="text-muted mb-2" style={{ fontSize: 11 }}>
+        Un mismo tercero puede tener varios roles a la vez — por ejemplo, un
+        Joyero que también compra como Clienta.
+      </div>
+      <div className="d-flex flex-wrap gap-2 my-2">
+        {(tercero.roles || []).map((r) => (
+          <div
+            key={r.id}
+            className="d-flex align-items-center gap-1 border rounded px-2 py-1"
+            style={{ fontSize: 12 }}
+          >
+            <strong>{r.rol?.nombre}</strong>
+            <button
+              className="btn btn-sm btn-outline-danger py-0 px-1"
+              style={{ fontSize: 11 }}
+              onClick={() => handleRemover(r.rolId)}
+            >
+              ✕
+            </button>
+          </div>
+        ))}
+      </div>
+      {disponibles.length > 0 && (
+        <div className="d-flex gap-2 align-items-center flex-wrap">
+          <select
+            className="form-select form-select-sm"
+            style={{ width: 180 }}
+            value={rolId}
+            onChange={(e) => setRolId(e.target.value)}
+          >
+            <option value="">+ Agregar rol</option>
+            {disponibles.map((g) => (
+              <option key={g.id} value={g.id}>
+                {g.nombre}
+              </option>
+            ))}
+          </select>
+          <button className="btn btn-primary btn-sm" onClick={handleAgregar}>
+            Agregar
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Campos por tipo de tercero ────────────────────────────────────
 function useCamposTercero(tipoCodigo) {
   return useMemo(() => {
@@ -201,6 +301,40 @@ function useCamposTercero(tipoCodigo) {
         maxLength: 100,
         ancho: "120px",
         ordenListado: 3,
+      },
+      // ── NUEVO (ronda 46) — columna informativa: todos los roles que
+      // tiene este tercero hoy, no solo el de la pantalla actual. Así se
+      // ve de un vistazo si, por ejemplo, esta Proveedora también es
+      // Clienta.
+      {
+        nombre: "roles",
+        etiqueta: "Roles",
+        soloListado: true,
+        ancho: "180px",
+        ordenListado: 6,
+        ordenable: false,
+        render: (f) => {
+          const roles = f.roles || [];
+          if (!roles.length)
+            return (
+              <span className="text-muted" style={{ fontSize: 11 }}>
+                —
+              </span>
+            );
+          return (
+            <div className="d-flex flex-wrap gap-1">
+              {roles.map((r) => (
+                <span
+                  key={r.id}
+                  className="badge bg-secondary"
+                  style={{ fontSize: 10 }}
+                >
+                  {r.rol?.nombre}
+                </span>
+              ))}
+            </div>
+          );
+        },
       },
       {
         nombre: "activo",
@@ -359,6 +493,11 @@ function TerceroVista({
     variables: { catalogoCodigo: "GRAL", subcatalogoCodigo: "TTRC" },
     fetchPolicy: "network-only",
   });
+  // ── CAMBIO (ronda 46) — este id de Grupo (Cliente/Joyero/Proveedor/
+  // Socio) ya no se envía como "tipoId" (columna única del Tercero) sino
+  // como "rolId" (el rol con el que nace el tercero — ver fixedValues
+  // más abajo). El nombre de la variable se deja igual para no revolver
+  // el resto del componente.
   const tipoId = useMemo(() => {
     const grupos = dataTipos?.gruposPorCodigos || [];
     return grupos.find((g) => g.codigo === tipoCodigo)?.id;
@@ -368,14 +507,21 @@ function TerceroVista({
 
   if (!tipoId) return <div className="text-muted p-4">Cargando...</div>;
 
-  // getDetalle según tipo
-  const getDetalle = conPerfil
-    ? (row) => <PerfilClientaPanel clienta={row} empresaId={empresaActual.id} />
-    : conEspecialidades
-      ? (row, refetch) => (
-          <EspecialidadesPanel tercero={row} refetch={refetch} />
-        )
-      : undefined;
+  // ── CAMBIO (ronda 46) — antes mostraba UN panel según el tipo
+  // (PerfilClienta o Especialidades). Ahora siempre se agrega también el
+  // panel de Roles, disponible para cualquier tercero, para poder
+  // sumarle un rol adicional sin duplicar su ficha.
+  const getDetalle = (row, refetch) => (
+    <>
+      {conPerfil && (
+        <PerfilClientaPanel clienta={row} empresaId={empresaActual.id} />
+      )}
+      {conEspecialidades && (
+        <EspecialidadesPanel tercero={row} refetch={refetch} />
+      )}
+      <RolesPanel tercero={row} refetch={refetch} />
+    </>
+  );
 
   return (
     <EntidadGenerica
@@ -390,7 +536,7 @@ function TerceroVista({
         ACTUALIZAR: ACTUALIZAR_TERCERO,
         ELIMINAR: ELIMINAR_TERCERO,
       }}
-      fixedValues={{ empresaId: empresaActual.id, tipoId }}
+      fixedValues={{ empresaId: empresaActual.id, rolId: tipoId }}
       extraVariables={{ tipoCodigo }}
       getDetalle={getDetalle}
     />
@@ -401,7 +547,7 @@ export const Clientas = () => (
   <TerceroVista
     tipoCodigo="CLIENTE"
     titulo="Clientas"
-    descripcion="Expanda ▸ para ver historial de compras, conversaciones y cotizaciones"
+    descripcion="Expanda ▸ para ver historial de compras, conversaciones y cotizaciones — y para agregarle otro rol (ej: si también es Proveedora)"
     textoBoton="Clienta"
     conPerfil
   />
@@ -411,7 +557,7 @@ export const Joyeros = () => (
   <TerceroVista
     tipoCodigo="JOYERO"
     titulo="Joyeros / Maquiladores"
-    descripcion="Expanda una fila para gestionar especialidades"
+    descripcion="Expanda una fila para gestionar especialidades o agregarle otro rol (ej: si también compra como Clienta)"
     textoBoton="Joyero"
     conEspecialidades
   />
@@ -421,7 +567,7 @@ export const Proveedores = () => (
   <TerceroVista
     tipoCodigo="PROVEEDOR"
     titulo="Proveedores"
-    descripcion="Proveedores de oro, piedras e insumos"
+    descripcion="Proveedores de oro, piedras e insumos — expanda ▸ para agregarle otro rol"
     textoBoton="Proveedor"
   />
 );
@@ -430,7 +576,7 @@ export const Socios = () => (
   <TerceroVista
     tipoCodigo="SOCIO"
     titulo="Socias"
-    descripcion="Socias del negocio con porcentaje de reparto"
+    descripcion="Socias del negocio con porcentaje de reparto — expanda ▸ para agregarle otro rol"
     textoBoton="Socia"
   />
 );

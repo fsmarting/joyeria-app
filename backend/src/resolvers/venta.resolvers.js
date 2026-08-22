@@ -208,7 +208,10 @@ export default {
           empresaId: user.empresaActualId,
           deletedAt: null,
           activo: true,
-          tipo: { codigo: "SOCIO" },
+          // ── CAMBIO (ronda 46) — "tipo: { codigo: ... }" ya no existe
+          // (Tercero ahora tiene varios roles posibles vía TerceroRol,
+          // no un tipo único). Se busca por el rol SOCIO entre los suyos.
+          roles: { some: { deletedAt: null, rol: { codigo: "SOCIO" } } },
         },
         orderBy: { nombre: "asc" },
       });

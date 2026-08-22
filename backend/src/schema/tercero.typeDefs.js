@@ -9,10 +9,20 @@ export default /* GraphQL */ `
     especialidad: Grupo
   }
 
+  # ── NUEVO (ronda 46) — un tercero puede tener varios roles a la vez
+  # (Cliente, Joyero, Proveedor, Socio). Reemplaza el antiguo campo único
+  # "tipoId" — ver comentario en schema.prisma.
+  type TerceroRol {
+    id: Int!
+    terceroId: Int!
+    rolId: Int!
+    version: Int!
+    rol: Grupo
+  }
+
   type Tercero {
     id: Int!
     empresaId: Int!
-    tipoId: Int!
     tipoDocumentoId: Int
     numeroDocumento: String
     nombre: String!
@@ -25,11 +35,11 @@ export default /* GraphQL */ `
     canalId: Int
     porcentajeDefecto: Float
     version: Int!
-    tipo: Grupo
     tipoDocumento: Grupo
     tier: Grupo
     canal: Grupo
     especialidades: [TerceroEspecialidad!]!
+    roles: [TerceroRol!]!
   }
 
   type TerceroEdge {
@@ -43,7 +53,10 @@ export default /* GraphQL */ `
 
   input TerceroInput {
     empresaId: Int!
-    tipoId: Int!
+    # ── CAMBIO (ronda 46) — antes "tipoId" (rol único y obligatorio).
+    # Ahora es el rol CON el que nace el tercero — se puede agregar más
+    # roles después con agregarRolTercero, sin duplicar la ficha.
+    rolId: Int!
     tipoDocumentoId: Int
     numeroDocumento: String
     nombre: String!
@@ -60,7 +73,6 @@ export default /* GraphQL */ `
   input TerceroUpdateInput {
     id: Int!
     empresaId: Int!
-    tipoId: Int!
     tipoDocumentoId: Int
     numeroDocumento: String
     nombre: String!
@@ -79,6 +91,11 @@ export default /* GraphQL */ `
     especialidadId: Int!
     nivel: String
     esPrincipal: Boolean
+  }
+  # ── NUEVO (ronda 46)
+  input TerceroRolInput {
+    terceroId: Int!
+    rolId: Int!
   }
   type VentaResumen {
     id: Int!
@@ -143,5 +160,10 @@ export default /* GraphQL */ `
       nivel: String
       esPrincipal: Boolean
     ): TerceroEspecialidad!
+    # ── NUEVO (ronda 46) — agregar/quitar un rol adicional a un tercero
+    # que ya existe (ej: un Joyero que también empieza a comprar como
+    # Cliente), sin crear una ficha duplicada.
+    agregarRolTercero(input: TerceroRolInput!): TerceroRol!
+    removerRolTercero(terceroId: Int!, rolId: Int!): Boolean!
   }
 `;

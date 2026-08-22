@@ -137,7 +137,7 @@ model Grupo {
   conversacionesCanal Conversacion[] @relation("Conversacion_Canal")
   conversacionesMotivoPerdida Conversacion[] @relation("Conversacion_MotivoPerdida")
   ordenesEstado OrdenProduccion[] @relation("OrdenProduccion_Estado")
-  tercerosTipo Tercero[] @relation("Tercero_tipo")
+  tercerosRol TerceroRol[] @relation("TerceroRol_Grupo")
   tercerosTipoDocumento Tercero[] @relation("Tercero_tipoDocumento")
   tercerosTier Tercero[] @relation("Tercero_tier")
   tercerosCanal Tercero[] @relation("Tercero_canal")
@@ -154,7 +154,15 @@ model Grupo {
 model Tercero {
   id Int @id @default(autoincrement())
   empresaId Int
-  tipoId Int
+  // ── CAMBIO (ronda 46) — se retira `tipoId` (un solo rol excluyente:
+  // Cliente O Joyero O Proveedor O Socio). Un tercero real de una
+  // joyería artesanal puede jugar varios papeles a la vez (un joyero
+  // que también compra como clienta, un proveedor que también es
+  // socio) — antes eso obligaba a duplicar la ficha. Ahora los roles
+  // viven en TerceroRol (más abajo), varios por tercero, mismo patrón
+  // ya probado de TerceroEspecialidad. Sin datos reales todavía en esta
+  // tabla (se vacía de todos modos antes del montaje), así que se retira
+  // limpio en vez de dejarlo como campo "legacy".
   tipoDocumentoId Int?
   numeroDocumento String? @db.VarChar(30)
   nombre String @db.VarChar(150)
@@ -173,11 +181,13 @@ model Tercero {
   version Int @default(1)
   deletedAt DateTime?
   empresa Empresa @relation("Tercero_empresa", fields: [empresaId], references: [id])
-  tipo Grupo @relation("Tercero_tipo", fields: [tipoId], references: [id])
   tipoDocumento Grupo? @relation("Tercero_tipoDocumento", fields: [tipoDocumentoId], references: [id])
   tier Grupo? @relation("Tercero_tier", fields: [tierId], references: [id])
   canal Grupo? @relation("Tercero_canal", fields: [canalId], references: [id])
   especialidades TerceroEspecialidad[] @relation("TerceroEspecialidad_Tercero")
+  // ── NUEVO (ronda 46) — roles múltiples de este tercero (Cliente,
+  // Joyero, Proveedor, Socio — uno o varios a la vez). Reemplaza tipoId.
+  roles TerceroRol[] @relation("TerceroRol_Tercero")
   ventas Venta[] @relation("Venta_Cliente")
   conversaciones Conversacion[] @relation("Conversacion_Cliente")
   ordenesComoJoyero OrdenProduccion[] @relation("OrdenProduccion_Joyero")
@@ -187,7 +197,24 @@ model Tercero {
   // Compra más abajo.
   comprasComoProveedor Compra[] @relation("Compra_Proveedor")
   cotizaciones Cotizacion[] @relation("Cotizacion_Cliente")
-  @@index([empresaId, tipoId])
+  @@index([empresaId])
+}
+
+// ── NUEVO (ronda 46) — un tercero puede tener varios roles a la vez
+// (Cliente, Joyero, Proveedor, Socio) en vez de uno solo excluyente.
+// Mismo patrón que TerceroEspecialidad (que sigue existiendo sin
+// cambios, y sigue aplicando solo a quien tenga el rol Joyero entre
+// los suyos — ver tercero.resolvers.js).
+model TerceroRol {
+  id Int @id @default(autoincrement())
+  terceroId Int
+  rolId Int
+  version Int @default(1)
+  deletedAt DateTime?
+  tercero Tercero @relation("TerceroRol_Tercero", fields: [terceroId], references: [id], onDelete: Cascade)
+  rol Grupo @relation("TerceroRol_Grupo", fields: [rolId], references: [id])
+  @@unique([terceroId, rolId])
+  @@index([terceroId])
 }
 
 model TerceroEspecialidad {
